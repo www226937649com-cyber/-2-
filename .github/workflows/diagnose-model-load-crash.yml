@@ -17,75 +17,39 @@ jobs:
     steps:
       - name: Checkout source archive
         uses: actions/checkout@v4
-      - name: Inspect model loading and native bridge
+      - name: Inspect exact model-load path
         shell: bash
         run: |
           set -Eeuo pipefail
-          test -f DongBaKe-source-24.zip
           mkdir -p /tmp/dbk-src
           unzip -q DongBaKe-source-24.zip -d /tmp/dbk-src
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           root = Path("/tmp/dbk-src")
-          suffixes = {".kt", ".java", ".cpp", ".c", ".h", ".hpp", ".xml", ".kts", ".gradle", ".cmake"}
-          patterns = re.compile(
-              r"loadModel|load_model|llama_model_load|llama_init|System\.loadLibrary|"
-              r"native.*load|modelPath|modelFile|ggml_backend|Vulkan|vulkan|"
-              r"ACTION_OPEN_DOCUMENT|OpenDocument|ModelLoader|load.*model|model.*load",
-              re.I
-          )
-          files = [p for p in root.rglob("*") if p.is_file() and p.suffix in suffixes]
-          print("SOURCE FILE COUNT:", len(files))
-          print("\n=== APP SOURCE FILE LIST ===")
-          for p in files:
-              rel = p.relative_to(root).as_posix()
-              if rel.startswith(("app/src/main/", "app/src/test/")):
-                  print(rel)
-
-          printed = 0
-          seen = set()
-          print("\n=== MODEL / NATIVE / IMPORT MATCHES ===")
-          for p in files:
-              rel = p.relative_to(root).as_posix()
-              if not rel.startswith(("app/src/main/", "app/src/test/", "tools/")):
-                  continue
-              try:
-                  lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
-              except Exception:
-                  continue
-              hits = [i for i, line in enumerate(lines) if patterns.search(line)]
-              if not hits:
-                  continue
-              ranges = []
-              for i in hits:
-                  start, end = max(0, i-3), min(len(lines), i+4)
-                  if ranges and start <= ranges[-1][1]:
-                      ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
-                  else:
-                      ranges.append((start, end))
-              for start, end in ranges:
-                  key = (rel, start, end)
-                  if key in seen:
-                      continue
-                  seen.add(key)
-                  print(f"\n--- {rel}:{start+1}-{end} ---")
-                  for n in range(start, end):
-                      print(f"{n+1}: {lines[n]}")
-                  printed += 1
-                  if printed >= 45:
-                      print("\nMATCH OUTPUT TRUNCATED after 45 blocks")
-                      raise SystemExit(0)
-
-          print("\n=== BUILD / MANIFEST SETTINGS ===")
-          for rel in ("app/build.gradle.kts", "app/src/main/AndroidManifest.xml", "app/src/main/cpp/CMakeLists.txt"):
+          targets = {
+              "app/src/main/java/com/aiguanjia/app/NativeLlamaEngine.kt": [(1, 240)],
+              "app/src/main/cpp/dongbake_llama_jni.cpp": [(1, 115), (285, 355)],
+              "app/src/main/AndroidManifest.xml": [(1, 180)],
+              "app/build.gradle.kts": [(1, 150)],
+          }
+          main = root / "app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+          if main.exists():
+              lines = main.read_text(encoding="utf-8", errors="replace").splitlines()
+              keys = ("private fun importModel", "private fun loadLocalModel", "private fun unloadLocalModel")
+              for key in keys:
+                  hits = [i for i, line in enumerate(lines) if key in line]
+                  for i in hits:
+                      targets.setdefault("app/src/main/java/com/aiguanjia/app/MainActivity.kt", []).append((max(1, i+1-12), min(len(lines), i+1+110)))
+          for rel, ranges in targets.items():
               p = root / rel
-              if p.exists():
-                  print(f"\n--- {rel} ---")
-                  lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
-                  for i, line in enumerate(lines[:220], start=1):
-                      if rel.endswith("build.gradle.kts") and i > 100:
-                          continue
-                      print(f"{i}: {line}")
+              if not p.exists():
+                  print(f"\n=== MISSING {rel} ===")
+                  continue
+              lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+              print(f"\n========== {rel} ({len(lines)} lines) ==========")
+              for start, end in ranges:
+                  print(f"\n--- lines {start}-{min(end, len(lines))} ---")
+                  for i in range(start-1, min(end, len(lines))):
+                      print(f"{i+1}: {lines[i]}")
           PY
