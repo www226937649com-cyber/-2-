@@ -1,0 +1,91 @@
+name: Diagnose DongBaKe model-load crash
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-model-load-crash.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source archive
+        uses: actions/checkout@v4
+      - name: Inspect model loading and native bridge
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f DongBaKe-source-24.zip
+          mkdir -p /tmp/dbk-src
+          unzip -q DongBaKe-source-24.zip -d /tmp/dbk-src
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("/tmp/dbk-src")
+          suffixes = {".kt", ".java", ".cpp", ".c", ".h", ".hpp", ".xml", ".kts", ".gradle", ".cmake"}
+          patterns = re.compile(
+              r"loadModel|load_model|llama_model_load|llama_init|System\.loadLibrary|"
+              r"native.*load|modelPath|modelFile|ggml_backend|Vulkan|vulkan|"
+              r"ACTION_OPEN_DOCUMENT|OpenDocument|ModelLoader|load.*model|model.*load",
+              re.I
+          )
+          files = [p for p in root.rglob("*") if p.is_file() and p.suffix in suffixes]
+          print("SOURCE FILE COUNT:", len(files))
+          print("\n=== APP SOURCE FILE LIST ===")
+          for p in files:
+              rel = p.relative_to(root).as_posix()
+              if rel.startswith(("app/src/main/", "app/src/test/")):
+                  print(rel)
+
+          printed = 0
+          seen = set()
+          print("\n=== MODEL / NATIVE / IMPORT MATCHES ===")
+          for p in files:
+              rel = p.relative_to(root).as_posix()
+              if not rel.startswith(("app/src/main/", "app/src/test/", "tools/")):
+                  continue
+              try:
+                  lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+              except Exception:
+                  continue
+              hits = [i for i, line in enumerate(lines) if patterns.search(line)]
+              if not hits:
+                  continue
+              ranges = []
+              for i in hits:
+                  start, end = max(0, i-3), min(len(lines), i+4)
+                  if ranges and start <= ranges[-1][1]:
+                      ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
+                  else:
+                      ranges.append((start, end))
+              for start, end in ranges:
+                  key = (rel, start, end)
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  print(f"\n--- {rel}:{start+1}-{end} ---")
+                  for n in range(start, end):
+                      print(f"{n+1}: {lines[n]}")
+                  printed += 1
+                  if printed >= 45:
+                      print("\nMATCH OUTPUT TRUNCATED after 45 blocks")
+                      raise SystemExit(0)
+
+          print("\n=== BUILD / MANIFEST SETTINGS ===")
+          for rel in ("app/build.gradle.kts", "app/src/main/AndroidManifest.xml", "app/src/main/cpp/CMakeLists.txt"):
+              p = root / rel
+              if p.exists():
+                  print(f"\n--- {rel} ---")
+                  lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+                  for i, line in enumerate(lines[:220], start=1):
+                      if rel.endswith("build.gradle.kts") and i > 100:
+                          continue
+                      print(f"{i}: {line}")
+          PY
