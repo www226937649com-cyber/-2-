@@ -9,7 +9,7 @@ on:
       - '.github/workflows/build-apk-workflow-source-24.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: dongbake-source-24-${{ github.ref }}
@@ -48,6 +48,59 @@ jobs:
             echo "github_run_id=$GITHUB_RUN_ID"
             echo "github_run_number=$GITHUB_RUN_NUMBER"
             echo "github_sha=$GITHUB_SHA"
+            echo 'versionCode=24'
+            echo 'versionName=0.10.2'
+            cat "$GITHUB_WORKSPACE/source-archive-sha256.txt"
+          } > "$GITHUB_WORKSPACE/build-provenance.txt"
+
+      - name: Align source tests with version 24 and refresh source archive
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f "$GITHUB_WORKSPACE/.source24-tests-changed"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          old = r'versionCode\s*=\s*23\b'
+          new = r'versionCode\s*=\s*24\b'
+          files = [
+              Path("buildsrc/tests/test_native_build_setup.py"),
+              Path("buildsrc/tests/test_progress_audit.py"),
+          ]
+          changed = False
+          for path in files:
+              source = path.read_text(encoding="utf-8")
+              if old in source:
+                  path.write_text(source.replace(old, new), encoding="utf-8")
+                  changed = True
+                  print(f"Updated stale version expectation: {path}")
+              elif new in source:
+                  print(f"Version expectation already current: {path}")
+              else:
+                  raise SystemExit(f"Expected version assertion not found in {path}")
+          if changed:
+              Path(".source24-tests-changed").write_text("changed\n", encoding="utf-8")
+          PY
+          if [[ -f "$GITHUB_WORKSPACE/.source24-tests-changed" ]]; then
+            rm -f "$GITHUB_WORKSPACE/DongBaKe-source-24.zip"
+            (cd "$GITHUB_WORKSPACE/buildsrc" && zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-24.zip" .)
+            unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-24.zip"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add DongBaKe-source-24.zip
+            if ! git diff --cached --quiet; then
+              git commit -m "Align source-24 tests with versionCode 24"
+              git push origin HEAD:main
+            fi
+            rm -f "$GITHUB_WORKSPACE/.source24-tests-changed"
+          fi
+          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-24.zip" | tee "$GITHUB_WORKSPACE/source-archive-sha256.txt"
+          {
+            echo "github_repository=$GITHUB_REPOSITORY"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "github_run_number=$GITHUB_RUN_NUMBER"
+            echo "github_sha=$GITHUB_SHA"
+            echo "source_archive_commit=$(git rev-parse HEAD)"
             echo 'versionCode=24'
             echo 'versionName=0.10.2'
             cat "$GITHUB_WORKSPACE/source-archive-sha256.txt"
