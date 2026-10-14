@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: dongbake-source-24-spirvfix-${{ github.ref }}
+  group: dongbake-source-24-api29-vulkan-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -50,6 +50,7 @@ jobs:
             echo "github_sha=$GITHUB_SHA"
             echo 'versionCode=24'
             echo 'versionName=0.10.2'
+            echo 'minSdk=29 (Android 10 or newer)'
             cat "$GITHUB_WORKSPACE/source-archive-sha256.txt"
           } > "$GITHUB_WORKSPACE/build-provenance.txt"
 
@@ -110,6 +111,22 @@ jobs:
               print("Switched CMake to the Vulkan-Headers include directory.")
           elif new_include not in source:
               raise SystemExit("Could not find Vulkan include option in native build script.")
+          old_platform = "-DANDROID_PLATFORM=android-24"
+          new_platform = "-DANDROID_PLATFORM=android-29"
+          if old_platform in source:
+              source = source.replace(old_platform, new_platform, 1)
+              changed = True
+              print("Raised native Vulkan target to Android API 29 for Vulkan 1.1 loader symbols.")
+          elif new_platform not in source:
+              raise SystemExit("Could not find native Android platform setting.")
+          app_gradle = Path("buildsrc/app/build.gradle.kts")
+          app_source = app_gradle.read_text(encoding="utf-8")
+          if "minSdk = 24" in app_source:
+              app_gradle.write_text(app_source.replace("minSdk = 24", "minSdk = 29", 1), encoding="utf-8")
+              changed = True
+              print("Raised app minSdk to 29 to match the native Vulkan loader requirement.")
+          elif "minSdk = 29" not in app_source:
+              raise SystemExit("Could not find app minSdk setting.")
           if changed:
               script.write_text(source, encoding="utf-8")
           if changed:
