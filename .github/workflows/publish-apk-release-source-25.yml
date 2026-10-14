@@ -1,0 +1,73 @@
+name: Publish DongBaKe source-25 APK to GitHub Releases
+
+on:
+  workflow_run:
+    workflows: ["DongBaKe Android build - source-25 CPU-first stability"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v0.10.3-source-25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download APKs from the successful source-25 build
+        uses: actions/download-artifact@v4
+        with:
+          name: DongBaKe-source-25-v0.10.3-run-${{ github.event.workflow_run.run_number }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded-build
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release-assets
+          DEBUG_APK="$(find downloaded-build -type f -path '*/debug/app-debug.apk' -print -quit)"
+          RELEASE_APK="$(find downloaded-build -type f -name 'app-release-unsigned.apk' -print -quit)"
+          test -n "$DEBUG_APK" || { echo "ERROR: app-debug.apk not found"; find downloaded-build -maxdepth 8 -type f | head -100; exit 2; }
+          cp "$DEBUG_APK" release-assets/DongBaKe-v0.10.3-debug.apk
+          if [[ -n "$RELEASE_APK" ]]; then
+            cp "$RELEASE_APK" release-assets/DongBaKe-v0.10.3-release-unsigned.apk
+          fi
+          ls -lh release-assets/*.apk
+          file release-assets/*.apk
+
+      - name: Publish APK files to GitHub Releases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          cat > "$NOTES" <<'EOF'
+          DongBaKe Android v0.10.3 (source revision 25).
+
+          - DongBaKe-v0.10.3-debug.apk: signed debug build for installation and testing.
+          - DongBaKe-v0.10.3-release-unsigned.apk: unsigned release build, not directly installable until signed.
+
+          This version prioritizes CPU-only model loading by default, checks system-memory risk before attempting a model load, records on-device diagnostic breadcrumbs, and adds a logs page under More Features. System-version details are collapsed by default; app-version details are shown separately.
+
+          Minimum Android version: Android 10 (API 29). GPU/Vulkan loading is not enabled by default in this stability build and still requires device-specific validation.
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/*.apk --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/*.apk \
+              --title "DongBaKe v0.10.3 (source-25 stability)" \
+              --notes-file "$NOTES" \
+              --target "$SOURCE_SHA"
+          fi
+          gh release view "$RELEASE_TAG" --json name,tagName,url,assets
