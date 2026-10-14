@@ -1,0 +1,186 @@
+name: DongBaKe Android build - source-25 CPU-first stability
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "DongBaKe-source-25.zip"
+      - ".github/workflows/build-apk-workflow-source-25.yml"
+      - ".github/scripts/patch-source-25.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  ANDROID_NDK_VERSION: '27.2.12479018'
+  ANDROID_CMAKE_VERSION: '3.22.1'
+  LLAMA_CPP_TAG: 'v0.6.0'
+
+jobs:
+  prepare-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Apply stability patch once or reuse source-25
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -rf "$GITHUB_WORKSPACE/buildsrc"
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc"
+          if [[ -f "$GITHUB_WORKSPACE/DongBaKe-source-25.zip" ]]; then
+            echo "Using existing source-25 archive."
+            unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-25.zip"
+            unzip -q "$GITHUB_WORKSPACE/DongBaKe-source-25.zip" -d "$GITHUB_WORKSPACE/buildsrc"
+          else
+            echo "Creating source-25 from source-24 and applying the requested stability/logging changes."
+            test -f "$GITHUB_WORKSPACE/DongBaKe-source-24.zip"
+            unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-24.zip"
+            unzip -q "$GITHUB_WORKSPACE/DongBaKe-source-24.zip" -d "$GITHUB_WORKSPACE/buildsrc"
+            python3 "$GITHUB_WORKSPACE/.github/scripts/patch-source-25.py" "$GITHUB_WORKSPACE/buildsrc"
+            grep -q 'versionCode = 25' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+            grep -q 'versionName = "0.10.3"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+            rm -f "$GITHUB_WORKSPACE/DongBaKe-source-25.zip"
+            (cd "$GITHUB_WORKSPACE/buildsrc" && zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-25.zip" .)
+            unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-25.zip"
+            sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-25.zip" | tee "$GITHUB_WORKSPACE/source-25-sha256.txt"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add DongBaKe-source-25.zip
+            git commit -m "Create DongBaKe source-25 with crash safeguards and diagnostics"
+            git push origin HEAD:main
+          fi
+
+          grep -q 'versionCode = 25' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionName = "0.10.3"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          {
+            echo "sourceVersion=25"
+            echo "versionCode=25"
+            echo 'versionName=0.10.3'
+            sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-25.zip"
+          } > "$GITHUB_WORKSPACE/source-25-provenance.txt"
+
+      - name: Upload exact source archive for this build
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-25-src-run-${{ github.run_number }}
+          path: |
+            DongBaKe-source-25.zip
+            source-25-provenance.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    needs: prepare-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download exact source-25 archive
+        uses: actions/download-artifact@v4
+        with:
+          name: DongBaKe-source-25-src-run-${{ github.run_number }}
+          path: source-input
+
+      - name: Verify and extract source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f "$GITHUB_WORKSPACE/source-input/DongBaKe-source-25.zip"
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc"
+          unzip -t "$GITHUB_WORKSPACE/source-input/DongBaKe-source-25.zip"
+          unzip -q "$GITHUB_WORKSPACE/source-input/DongBaKe-source-25.zip" -d "$GITHUB_WORKSPACE/buildsrc"
+          test -f "$GITHUB_WORKSPACE/buildsrc/settings.gradle.kts"
+          test -f "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionCode = 25' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionName = "0.10.3"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc/build/source-25-validation"
+          cp "$GITHUB_WORKSPACE/source-input/source-25-provenance.txt" "$GITHUB_WORKSPACE/buildsrc/build/source-25-validation/" || true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform, NDK, CMake and Vulkan build dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}" "cmake;${ANDROID_CMAKE_VERSION}"
+          sudo apt-get update
+          sudo apt-get install -y glslc spirv-headers libvulkan-dev ninja-build
+          test -f "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
+          command -v glslc
+          command -v ninja
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Run source and parser tests
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s tests -v 2>&1 | tee build/source-25-validation/python-tests.log
+          bash tools/test_model_profile.sh 2>&1 | tee build/source-25-validation/model-profile-tests.log
+          bash tools/test_math_parser.sh 2>&1 | tee build/source-25-validation/math-parser-tests.log
+          bash tools/test_source_audit.sh 2>&1 | tee build/source-25-validation/source-audit-tests.log
+
+      - name: Build llama.cpp v0.6.0 Android arm64 CPU + Vulkan native libraries
+        working-directory: ${{ github.workspace }}/buildsrc
+        env:
+          LLAMA_CPP_SOURCE_DIR: ${{ runner.temp }}/llama.cpp
+          LLAMA_CPP_BUILD_DIR: ${{ runner.temp }}/llama.cpp-build-android-vulkan
+          LLAMA_CPP_INSTALL_DIR: ${{ github.workspace }}/buildsrc/build/llama.cpp-install-android-vulkan
+          BUILD_JOBS: '2'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_NDK="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          export PATH="$ANDROID_HOME/cmake/${ANDROID_CMAKE_VERSION}/bin:$PATH"
+          bash tools/build_llama_cpp_android_vulkan.sh 2>&1 | tee build/source-25-validation/native-vulkan-build.log
+          test -f app/src/main/jniLibs/arm64-v8a/libllama.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml-base.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml-vulkan.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml-cpu.so
+
+      - name: Compile APKs and run Android unit tests
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gradle --no-daemon --project-dir "$GITHUB_WORKSPACE/buildsrc" --stacktrace :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease 2>&1 | tee build/source-25-validation/gradle-build.log
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          printf 'versionCode=25\nversionName=0.10.3\nrunId=%s\ncommit=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > app/build/outputs/apk/build-version-proof.txt
+
+      - name: Upload APKs, native libraries and diagnostic build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-25-v0.10.3-run-${{ github.run_number }}
+          path: |
+            buildsrc/app/build/outputs/apk/**
+            buildsrc/app/build/reports/**
+            buildsrc/app/src/main/jniLibs/arm64-v8a/*.so
+            buildsrc/build/llama.cpp-install-android-vulkan/lib/*.so
+            buildsrc/build/source-25-validation/*.log
+            buildsrc/app/build/outputs/logs/**
+            source-input/source-25-provenance.txt
+          if-no-files-found: warn
+          retention-days: 14
