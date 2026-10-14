@@ -1,0 +1,75 @@
+name: Publish DongBaKe source-27 APK to GitHub Releases
+
+on:
+  workflow_run:
+    workflows: ["DongBaKe Android build - source-27 Redmi Note 11T Pro compatibility"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: v0.10.5-source-27
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download APKs from the successful source-27 build
+        uses: actions/download-artifact@v4
+        with:
+          name: DongBaKe-source-27-v0.10.5-run-${{ github.event.workflow_run.run_number }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded-build
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release-assets
+          DEBUG_APK="$(find downloaded-build -type f -path '*/debug/app-debug.apk' -print -quit)"
+          RELEASE_APK="$(find downloaded-build -type f -name 'app-release-unsigned.apk' -print -quit)"
+          test -n "$DEBUG_APK" || { echo "ERROR: app-debug.apk not found"; find downloaded-build -maxdepth 8 -type f | head -100; exit 2; }
+          cp "$DEBUG_APK" release-assets/DongBaKe-v0.10.5-debug.apk
+          if [[ -n "$RELEASE_APK" ]]; then
+            cp "$RELEASE_APK" release-assets/DongBaKe-v0.10.5-release-unsigned.apk
+          fi
+          ls -lh release-assets/*.apk
+          file release-assets/*.apk
+
+      - name: Publish APK files to GitHub Releases
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          cat > "$NOTES" <<'EOF'
+          DongBaKe Android v0.10.5 (source revision 27).
+
+          - DongBaKe-v0.10.5-debug.apk: signed debug build for installation and testing.
+          - DongBaKe-v0.10.5-release-unsigned.apk: unsigned release build, not directly installable until signed.
+
+          Source revision 27 removes the incorrect file-size-versus-free-RAM admission gate. CPU-only loading now explicitly selects file-backed mmap instead of AUTO, which can otherwise disable mmap when an unused Vulkan device is inspected. The app does not reject GGUF models based on file length.
+
+          The app persists llama.cpp native log output while model loading is in progress and records Android process exit reasons (including native crash and low-memory kill reports) on next startup where Android provides them. It also records chipset/device and per-process memory details. Long prompt prefill remains chunked at batches up to 512 tokens while preserving configured context size.
+
+          Minimum Android version: Android 10 (API 29). Please test on your Redmi Note 11T Pro with the same GGUF model; CI cannot replace real-device verification. GPU/Vulkan offload still requires device-specific validation.
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/*.apk --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/*.apk \
+              --title "DongBaKe v0.10.5 (Redmi Note 11T Pro compatibility)" \
+              --notes-file "$NOTES" \
+              --target "$SOURCE_SHA"
+          fi
+          gh release view "$RELEASE_TAG" --json name,tagName,url,assets
