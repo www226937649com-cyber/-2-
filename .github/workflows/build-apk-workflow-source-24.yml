@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: dongbake-source-24-${{ github.ref }}
+  group: dongbake-source-24-khronos-${{ github.ref }}
   cancel-in-progress: false
 
 env:
