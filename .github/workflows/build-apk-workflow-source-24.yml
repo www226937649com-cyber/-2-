@@ -81,18 +81,33 @@ jobs:
 
           script = Path("buildsrc/tools/build_llama_cpp_android_vulkan.sh")
           source = script.read_text(encoding="utf-8")
-          needle = '  -DVulkan_GLSLC_EXECUTABLE="$(command -v glslc)" \\\n'
-          replacement = needle + '  -DVulkan_INCLUDE_DIR=/usr/include \\\n'
-          if needle in source:
-              source = source.replace(needle, replacement, 1)
-              script.write_text(source, encoding="utf-8")
+          spirv_anchor = 'SPIRV_HEADERS_DIR="$(dirname "$SPIRV_HEADERS_CONFIG")"\n'
+          vulkan_headers_block = (
+              '\nVULKAN_HEADERS_DIR="\${VULKAN_HEADERS_DIR:-\${ROOT_DIR}/build/Vulkan-Headers}"\n'
+              'if [[ ! -f "$VULKAN_HEADERS_DIR/include/vulkan/vulkan.hpp" ]]; then\n'
+              '  rm -rf "$VULKAN_HEADERS_DIR"\n'
+              '  git clone --depth 1 --branch "v1.3.296" https://github.com/KhronosGroup/Vulkan-Headers.git "$VULKAN_HEADERS_DIR"\n'
+              'fi\n'
+              '[[ -f "$VULKAN_HEADERS_DIR/include/vulkan/vulkan.hpp" ]] || fail "Vulkan-Headers C++ wrapper was not downloaded correctly."\n'
+          )
+          if 'VULKAN_HEADERS_DIR="\${VULKAN_HEADERS_DIR:-\${ROOT_DIR}/build/Vulkan-Headers}"' not in source:
+              if spirv_anchor not in source:
+                  raise SystemExit("Could not locate SPIRV-Headers directory in the native build script.")
+              source = source.replace(spirv_anchor, spirv_anchor + vulkan_headers_block, 1)
               changed = True
-              print("Added Vulkan-Headers include directory for Android cross compilation.")
-          elif "-DVulkan_INCLUDE_DIR=/usr/include" in source:
-              print("Vulkan-Headers include directory already configured.")
+              print("Added pinned Khronos Vulkan-Headers download.")
+          old_include = '  -DVulkan_INCLUDE_DIR=/usr/include \\\n'
+          new_include = '  -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS_DIR/include" \\\n'
+          if old_include in source:
+              source = source.replace(old_include, new_include, 1)
+              changed = True
+              print("Switched CMake to the pinned Vulkan-Headers include directory.")
+          elif new_include in source:
+              print("CMake already points at the pinned Vulkan-Headers include directory.")
           else:
-              raise SystemExit("Could not find Vulkan CMake configuration line in build script.")
-
+              raise SystemExit("Could not find Vulkan include option in native build script.")
+          if changed:
+              script.write_text(source, encoding="utf-8")
           if changed:
               Path(".source24-tests-changed").write_text("changed\n", encoding="utf-8")
           PY
@@ -109,7 +124,6 @@ jobs:
             fi
             rm -f "$GITHUB_WORKSPACE/.source24-tests-changed"
           fi
-          test -f /usr/include/vulkan/vulkan.hpp
           sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-24.zip" | tee "$GITHUB_WORKSPACE/source-archive-sha256.txt"
           {
             echo "github_repository=$GITHUB_REPOSITORY"
