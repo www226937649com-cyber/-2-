@@ -1,0 +1,83 @@
+name: Publish DongBaKe source-29 APK to GitHub Releases
+
+on:
+  workflow_run:
+    workflows: ["DongBaKe Android build - source-29 CPU + Vulkan multi-ABI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: v0.10.7-source-29
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download APKs and provenance from the successful source-29 build
+        uses: actions/download-artifact@v4
+        with:
+          name: DongBaKe-source-29-v0.10.7-run-${{ github.event.workflow_run.run_number }}
+          run-id: ${{ github.event.workflow_run.id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded-build
+
+      - name: Prepare release assets and verify source provenance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p release-assets
+          DEBUG_APK="$(find downloaded-build -type f -path '*/debug/app-debug.apk' -print -quit)"
+          RELEASE_APK="$(find downloaded-build -type f -name 'app-release-unsigned.apk' -print -quit)"
+          PROVENANCE="$(find downloaded-build -type f -name 'source-29-provenance.txt' -print -quit)"
+          test -n "$DEBUG_APK" || { echo 'ERROR: debug APK missing'; find downloaded-build -type f | head -100; exit 2; }
+          test -n "$RELEASE_APK" || { echo 'ERROR: unsigned release APK missing'; exit 2; }
+          test -n "$PROVENANCE" || { echo 'ERROR: source provenance missing'; exit 2; }
+          SOURCE_ARCHIVE_COMMIT="$(sed -n 's/^sourceArchiveCommit=//p' "$PROVENANCE" | head -1)"
+          test -n "$SOURCE_ARCHIVE_COMMIT" || { echo 'ERROR: source archive commit missing'; cat "$PROVENANCE"; exit 2; }
+          grep -q '^versionCode=29$' "$PROVENANCE"
+          grep -q '^versionName=0.10.7$' "$PROVENANCE"
+          cp "$DEBUG_APK" release-assets/DongBaKe-v0.10.7-debug.apk
+          cp "$RELEASE_APK" release-assets/DongBaKe-v0.10.7-release-unsigned.apk
+          sha256sum release-assets/*.apk > release-assets/SHA256SUMS.txt
+          echo "SOURCE_ARCHIVE_COMMIT=$SOURCE_ARCHIVE_COMMIT" >> "$GITHUB_ENV"
+          cat "$PROVENANCE"
+          cat release-assets/SHA256SUMS.txt
+
+      - name: Publish versioned APK assets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          cat > "$NOTES" <<'EOF'
+          DongBaKe Android v0.10.7 (source revision 29), package ID unchanged: com.aiguanjia.app.
+
+          Changes in this phase:
+          - Adds GPU-layer request settings with runtime offload-log evidence; a request is not represented as proof of GPU execution.
+          - Keeps F16 KV cache as the default and exposes Q8_0 as an explicit experimental option.
+          - Adds GPU Flash Attention AUTO/disabled preference while keeping CPU Flash Attention disabled on the portable path.
+          - Connects GGML abort callback to native inference context and logs token count, first visible token latency, prefill/decode duration and decode tokens/s.
+          - Makes the GPU-to-CPU model reload explicitly use MMAP.
+          - Builds CPU/Vulkan dynamic backends and JNI APKs for arm64-v8a and x86_64.
+
+          Validation note: CI source/parser tests, native compilation, Android unit tests and APK packaging must pass for this release to be published. This does not prove GPU execution, performance improvement or full device compatibility; test on the target device before relying on optional GPU/KV settings. The release debug APK is signed for testing. The release APK is unsigned and is not directly installable until signed.
+
+          Explicitly not fixed in this release: the separately reported Qwen3.8-4B native SIGSEGV during llama_context graph_reserve/sched_reserve. That issue is reserved for the next dedicated debugging phase. Speculative decoding and vendor-specific NPU/APU acceleration are not claimed as implemented.
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --title "DongBaKe v0.10.7 (inference controls and multi-ABI build)" \
+              --notes-file "$NOTES" \
+              --target "$SOURCE_ARCHIVE_COMMIT"
+          fi
+          gh release view "$RELEASE_TAG" --json name,tagName,url,assets
