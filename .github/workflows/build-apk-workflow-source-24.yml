@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: dongbake-source-24-khronos-${{ github.ref }}
+  group: dongbake-source-24-spirvfix-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -81,31 +81,37 @@ jobs:
 
           script = Path("buildsrc/tools/build_llama_cpp_android_vulkan.sh")
           source = script.read_text(encoding="utf-8")
-          spirv_anchor = 'SPIRV_HEADERS_DIR="$(dirname "$SPIRV_HEADERS_CONFIG")"\n'
-          vulkan_headers_block = (
-              '\nVULKAN_HEADERS_DIR="\${VULKAN_HEADERS_DIR:-\${ROOT_DIR}/build/Vulkan-Headers}"\n'
-              'if [[ ! -f "$VULKAN_HEADERS_DIR/include/vulkan/vulkan.hpp" ]]; then\n'
-              '  rm -rf "$VULKAN_HEADERS_DIR"\n'
-              '  git clone --depth 1 --branch "v1.3.296" https://github.com/KhronosGroup/Vulkan-Headers.git "$VULKAN_HEADERS_DIR"\n'
-              'fi\n'
-              '[[ -f "$VULKAN_HEADERS_DIR/include/vulkan/vulkan.hpp" ]] || fail "Vulkan-Headers C++ wrapper was not downloaded correctly."\n'
-          ).replace("\\$", "$")
-          if "VULKAN_HEADERS_DIR" not in source:
-              if spirv_anchor not in source:
-                  raise SystemExit("Could not locate SPIRV-Headers directory in the native build script.")
-              source = source.replace(spirv_anchor, spirv_anchor + vulkan_headers_block, 1)
+          malformed = r'\${VULKAN_HEADERS_DIR:-\${ROOT_DIR}/build/Vulkan-Headers}'
+          corrected = malformed.replace(r'\$', '$')
+          if malformed in source:
+              source = source.replace(malformed, corrected)
               changed = True
-              print("Added pinned Khronos Vulkan-Headers download.")
+              print("Corrected shell variable expansion for Vulkan-Headers.")
+          check_line = '[[ -f "$VULKAN_HEADERS_DIR/include/vulkan/vulkan.hpp" ]] || fail "Vulkan-Headers C++ wrapper was not downloaded correctly."\n'
+          spirv_copy = (
+              'if [[ ! -f "$VULKAN_HEADERS_DIR/include/spirv/unified1/spirv.hpp" ]]; then\n'
+              '  SPIRV_HEADER_FILE="$(find /usr/include /opt -type f -path \'*/spirv/unified1/spirv.hpp\' -print -quit 2>/dev/null || true)"\n'
+              '  [[ -n "$SPIRV_HEADER_FILE" ]] || fail "SPIRV-Headers unified1/spirv.hpp was not found."\n'
+              '  SPIRV_INCLUDE_ROOT="$(dirname "$(dirname "$(dirname "$SPIRV_HEADER_FILE")")")"\n'
+              '  cp -a "$SPIRV_INCLUDE_ROOT/spirv" "$VULKAN_HEADERS_DIR/include/"\n'
+              'fi\n'
+          )
+          if "SPIRV_HEADER_FILE=" not in source:
+              if check_line not in source:
+                  raise SystemExit("Could not locate Vulkan-Headers verification line in native build script.")
+              source = source.replace(check_line, check_line + spirv_copy, 1)
+              changed = True
+              print("Staged SPIRV-Headers next to Vulkan-Headers for the cross compiler.")
           old_include = '  -DVulkan_INCLUDE_DIR=/usr/include \\\n'
           new_include = '  -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS_DIR/include" \\\n'
           if old_include in source:
               source = source.replace(old_include, new_include, 1)
               changed = True
-              print("Switched CMake to the pinned Vulkan-Headers include directory.")
-          elif new_include in source:
-              print("CMake already points at the pinned Vulkan-Headers include directory.")
-          else:
+              print("Switched CMake to the Vulkan-Headers include directory.")
+          elif new_include not in source:
               raise SystemExit("Could not find Vulkan include option in native build script.")
+          if changed:
+              script.write_text(source, encoding="utf-8")
           if changed:
               script.write_text(source, encoding="utf-8")
           if changed:
