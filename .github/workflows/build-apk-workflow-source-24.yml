@@ -89,8 +89,8 @@ jobs:
               '  git clone --depth 1 --branch "v1.3.296" https://github.com/KhronosGroup/Vulkan-Headers.git "$VULKAN_HEADERS_DIR"\n'
               'fi\n'
               '[[ -f "$VULKAN_HEADERS_DIR/include/vulkan/vulkan.hpp" ]] || fail "Vulkan-Headers C++ wrapper was not downloaded correctly."\n'
-          )
-          if 'VULKAN_HEADERS_DIR="\${VULKAN_HEADERS_DIR:-\${ROOT_DIR}/build/Vulkan-Headers}"' not in source:
+          ).replace("\\$", "$")
+          if "VULKAN_HEADERS_DIR" not in source:
               if spirv_anchor not in source:
                   raise SystemExit("Could not locate SPIRV-Headers directory in the native build script.")
               source = source.replace(spirv_anchor, spirv_anchor + vulkan_headers_block, 1)
