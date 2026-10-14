@@ -40,7 +40,7 @@ jobs:
           {
             cat .github/scripts/patch-source-30.diff.xz.b64.part-00
             cat .github/scripts/patch-source-30.diff.xz.b64.part-01
-            for part in $(seq -w 0 8); do cat ".github/scripts/patch-source-30-02chunks/part-${part}.txt"; done
+            for part in 00 01 02 03 04 05 06 07 08; do cat ".github/scripts/patch-source-30-02chunks/part-${part}.txt"; done
             cat .github/scripts/patch-source-30.diff.xz.b64.part-03
             cat .github/scripts/patch-source-30.diff.xz.b64.part-04
           } | base64 --decode | xz -dc > "$RUNNER_TEMP/patch-source-30.diff"
