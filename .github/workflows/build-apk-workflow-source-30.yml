@@ -1,0 +1,156 @@
+name: DongBaKe Android build - source-30 checklist phase
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/source-30-phase1-checklist"]
+    paths:
+      - ".github/workflows/build-apk-workflow-source-30.yml"
+      - ".github/scripts/patch-source-30.diff.xz.b64.part-*"
+      - ".github/scripts/patch-source-30-02chunks/**"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: dongbake-source-30-checklist-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_NDK_VERSION: "27.2.12479018"
+  ANDROID_CMAKE_VERSION: "3.22.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Apply guarded source-30 checklist patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f "$GITHUB_WORKSPACE/DongBaKe-source-29.zip"
+          unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-29.zip"
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc"
+          unzip -q "$GITHUB_WORKSPACE/DongBaKe-source-29.zip" -d "$GITHUB_WORKSPACE/buildsrc"
+          {
+            cat .github/scripts/patch-source-30.diff.xz.b64.part-00
+            cat .github/scripts/patch-source-30.diff.xz.b64.part-01
+            for part in $(seq -w 0 8); do cat ".github/scripts/patch-source-30-02chunks/part-${part}.txt"; done
+            cat .github/scripts/patch-source-30.diff.xz.b64.part-03
+            cat .github/scripts/patch-source-30.diff.xz.b64.part-04
+          } | base64 --decode | xz -dc > "$RUNNER_TEMP/patch-source-30.diff"
+          test "$(wc -c < "$RUNNER_TEMP/patch-source-30.diff")" -gt 40000
+          patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/patch-source-30.diff"
+          grep -q 'applicationId = "com.aiguanjia.app"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionCode = 30' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionName = "0.10.8"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'abiFilters += listOf("arm64-v8a", "x86_64")' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc/build/source-30-validation"
+          sha256sum "$RUNNER_TEMP/patch-source-30.diff" | tee "$GITHUB_WORKSPACE/buildsrc/build/source-30-validation/patch-sha256.txt"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f "$GITHUB_WORKSPACE/DongBaKe-source-30.zip"
+          (cd "$GITHUB_WORKSPACE/buildsrc" && zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-30.zip" . -x 'build/*' '*/build/*' '*.pyc' '*/__pycache__/*')
+          unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-30.zip"
+          git add DongBaKe-source-30.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "Add DongBaKe source-30 checklist phase archive"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
+          {
+            echo "versionCode=30"
+            echo 'versionName=0.10.8'
+            echo "sourceArchiveCommit=$(git rev-parse HEAD)"
+            sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-30.zip"
+          } > "$GITHUB_WORKSPACE/buildsrc/build/source-30-validation/source-30-provenance.txt"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform, NDK, CMake and Vulkan build dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}" "cmake;${ANDROID_CMAKE_VERSION}"
+          sudo apt-get update
+          sudo apt-get install -y glslc spirv-headers libvulkan-dev ninja-build zip unzip
+          test -f "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
+          command -v glslc
+          command -v ninja
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Run source, parser and feature-audit tests
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build/source-30-validation
+          python3 -m unittest discover -s tests -v 2>&1 | tee build/source-30-validation/python-tests.log
+          bash tools/test_model_profile.sh 2>&1 | tee build/source-30-validation/model-profile-tests.log
+          bash tools/test_math_parser.sh 2>&1 | tee build/source-30-validation/math-parser-tests.log
+          bash tools/test_source_audit.sh 2>&1 | tee build/source-30-validation/source-audit-tests.log
+          bash -n tools/build_llama_cpp_android_vulkan.sh
+
+      - name: Compile llama.cpp CPU and Vulkan backends for arm64-v8a and x86_64
+        working-directory: ${{ github.workspace }}/buildsrc
+        env:
+          LLAMA_CPP_SOURCE_DIR: ${{ runner.temp }}/llama.cpp
+          LLAMA_CPP_BUILD_DIR: ${{ runner.temp }}/llama.cpp-build-android
+          LLAMA_CPP_INSTALL_DIR: ${{ github.workspace }}/buildsrc/build/llama.cpp-install-android-vulkan
+          BUILD_JOBS: "2"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_NDK="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          export PATH="$ANDROID_HOME/cmake/${ANDROID_CMAKE_VERSION}/bin:$PATH"
+          export ANDROID_ABIS="arm64-v8a x86_64"
+          bash tools/build_llama_cpp_android_vulkan.sh 2>&1 | tee build/source-30-validation/native-vulkan-build.log
+          for abi in arm64-v8a x86_64; do
+            for lib in libllama.so libggml.so libggml-base.so libggml-vulkan.so libggml-cpu.so; do
+              test -f "app/src/main/jniLibs/${abi}/${lib}" || { echo "Missing ${abi}/${lib}"; exit 2; }
+            done
+          done
+
+      - name: Compile APKs and run Android unit tests
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gradle --no-daemon --project-dir "$GITHUB_WORKSPACE/buildsrc" --stacktrace :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease 2>&1 | tee build/source-30-validation/gradle-build.log
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          printf 'versionCode=30\nversionName=0.10.8\nabis=arm64-v8a,x86_64\nrunId=%s\ncommit=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > app/build/outputs/apk/build-version-proof.txt
+
+      - name: Upload APKs, native libraries and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-30-v0.10.8-run-${{ github.run_number }}
+          path: |
+            DongBaKe-source-30.zip
+            buildsrc/app/build/outputs/apk/**
+            buildsrc/app/build/reports/**
+            buildsrc/app/src/main/jniLibs/**/*.so
+            buildsrc/build/llama.cpp-install-android-vulkan/**/*.so
+            buildsrc/build/source-30-validation/*.log
+            buildsrc/build/source-30-validation/*.txt
+            buildsrc/app/build/outputs/logs/**
+          if-no-files-found: warn
+          retention-days: 14
