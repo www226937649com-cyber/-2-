@@ -7,6 +7,7 @@ on:
       - "DongBaKe-source-25.zip"
       - ".github/workflows/build-apk-workflow-source-25.yml"
       - ".github/scripts/patch-source-25.py"
+      - ".github/scripts/repair-source-25-tests.py"
   workflow_dispatch:
 
 permissions:
@@ -53,6 +54,22 @@ jobs:
             git add DongBaKe-source-25.zip
             git commit -m "Create DongBaKe source-25 with crash safeguards and diagnostics"
             git push origin HEAD:main
+          fi
+
+          python3 "$GITHUB_WORKSPACE/.github/scripts/repair-source-25-tests.py" "$GITHUB_WORKSPACE/buildsrc"
+          if [[ -f "$GITHUB_WORKSPACE/buildsrc/.source25-test-repair-changed" ]]; then
+            rm -f "$GITHUB_WORKSPACE/buildsrc/.source25-test-repair-changed"
+            rm -f "$GITHUB_WORKSPACE/DongBaKe-source-25.zip"
+            (cd "$GITHUB_WORKSPACE/buildsrc" && zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-25.zip" .)
+            unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-25.zip"
+            sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-25.zip" | tee "$GITHUB_WORKSPACE/source-25-sha256.txt"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add DongBaKe-source-25.zip
+            if ! git diff --cached --quiet; then
+              git commit -m "Update source-25 version assertions"
+              git push origin HEAD:main
+            fi
           fi
 
           grep -q 'versionCode = 25' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
