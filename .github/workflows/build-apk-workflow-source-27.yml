@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/build-apk-workflow-source-27.yml"
-      - ".github/scripts/patch-source-27.py"
+      - ".github/scripts/patch-source-27.py.gz"
   workflow_dispatch:
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
             unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-27.zip"
             unzip -q "$GITHUB_WORKSPACE/DongBaKe-source-27.zip" -d "$GITHUB_WORKSPACE/buildsrc"
           else
-            echo "Creating source-27 from source-25 and applying the requested runtime fixes."
+            echo "Creating source-27 from source-26 and applying the requested runtime fixes."
             test -f "$GITHUB_WORKSPACE/DongBaKe-source-26.zip"
             unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-26.zip"
             unzip -q "$GITHUB_WORKSPACE/DongBaKe-source-26.zip" -d "$GITHUB_WORKSPACE/buildsrc"
