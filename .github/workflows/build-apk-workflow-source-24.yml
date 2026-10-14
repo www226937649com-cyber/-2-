@@ -1,0 +1,140 @@
+name: DongBaKe Android build - source-24 CPU + Vulkan
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'DongBaKe-source-24.zip'
+      - '.github/workflows/build-apk-workflow-source-24.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dongbake-source-24-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_NDK_VERSION: '27.2.12479018'
+  ANDROID_CMAKE_VERSION: '3.22.1'
+  LLAMA_CPP_TAG: 'v0.6.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify and extract the exact source archive
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f "$GITHUB_WORKSPACE/DongBaKe-source-24.zip" || { echo 'ERROR: DongBaKe-source-24.zip is missing from repository root'; exit 2; }
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc"
+          unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-24.zip"
+          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-24.zip" | tee "$GITHUB_WORKSPACE/source-archive-sha256.txt"
+          unzip -q "$GITHUB_WORKSPACE/DongBaKe-source-24.zip" -d "$GITHUB_WORKSPACE/buildsrc"
+          test -f "$GITHUB_WORKSPACE/buildsrc/settings.gradle.kts"
+          test -f "$GITHUB_WORKSPACE/buildsrc/build.gradle.kts"
+          test -f "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionCode = 24' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionName = "0.10.2"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          echo 'Verified source: versionCode=24, versionName=0.10.2'
+          {
+            echo "github_repository=$GITHUB_REPOSITORY"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "github_run_number=$GITHUB_RUN_NUMBER"
+            echo "github_sha=$GITHUB_SHA"
+            echo 'versionCode=24'
+            echo 'versionName=0.10.2'
+            cat "$GITHUB_WORKSPACE/source-archive-sha256.txt"
+          } > "$GITHUB_WORKSPACE/build-provenance.txt"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform, NDK, CMake, and Vulkan build dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}" "cmake;${ANDROID_CMAKE_VERSION}"
+          sudo apt-get update
+          sudo apt-get install -y glslc spirv-headers libvulkan-dev ninja-build
+          test -f "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
+          command -v glslc
+          command -v ninja
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Run source and parser tests
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build/source-24-validation
+          python3 -m unittest discover -s tests -v 2>&1 | tee build/source-24-validation/python-tests.log
+          bash tools/test_model_profile.sh 2>&1 | tee build/source-24-validation/model-profile-tests.log
+          bash tools/test_math_parser.sh 2>&1 | tee build/source-24-validation/math-parser-tests.log
+          bash tools/test_source_audit.sh 2>&1 | tee build/source-24-validation/source-audit-tests.log
+
+      - name: Build llama.cpp v0.6.0 for Android arm64 CPU + Vulkan
+        working-directory: ${{ github.workspace }}/buildsrc
+        env:
+          LLAMA_CPP_SOURCE_DIR: ${{ runner.temp }}/llama.cpp
+          LLAMA_CPP_BUILD_DIR: ${{ runner.temp }}/llama.cpp-build-android-vulkan
+          LLAMA_CPP_INSTALL_DIR: ${{ github.workspace }}/buildsrc/build/llama.cpp-install-android-vulkan
+          BUILD_JOBS: '2'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_NDK="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          export PATH="$ANDROID_HOME/cmake/${ANDROID_CMAKE_VERSION}/bin:$PATH"
+          bash tools/build_llama_cpp_android_vulkan.sh 2>&1 | tee build/source-24-validation/native-vulkan-build.log
+          test -f app/src/main/jniLibs/arm64-v8a/libllama.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml-base.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml-vulkan.so
+          test -f app/src/main/jniLibs/arm64-v8a/libggml-cpu.so
+
+      - name: Verify app version before building
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -q 'versionCode = 24' app/build.gradle.kts
+          grep -q 'versionName = "0.10.2"' app/build.gradle.kts
+          echo "Building repository=$GITHUB_REPOSITORY run=$GITHUB_RUN_NUMBER commit=$GITHUB_SHA"
+          gradle --no-daemon --project-dir "$GITHUB_WORKSPACE/buildsrc" --stacktrace :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease 2>&1 | tee build/source-24-validation/gradle-build.log
+          find app/build/outputs/apk -type f -name '*.apk' -print
+          test -n "$(find app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+          printf 'versionCode=24\nversionName=0.10.2\nrunId=%s\ncommit=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > app/build/outputs/apk/build-version-proof.txt
+
+      - name: Upload APKs and build provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-24-v0.10.2-run-${{ github.run_number }}
+          path: |
+            buildsrc/app/build/outputs/apk/**
+            buildsrc/app/build/outputs/apk/**/*.apk
+            buildsrc/app/build/reports/**
+            buildsrc/app/src/main/jniLibs/arm64-v8a/*.so
+            buildsrc/build/llama.cpp-install-android-vulkan/lib/*.so
+            buildsrc/build/source-24-validation/*.log
+            buildsrc/app/build/outputs/logs/**
+            source-archive-sha256.txt
+            build-provenance.txt
+          if-no-files-found: warn
+          retention-days: 14
