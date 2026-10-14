@@ -1,0 +1,48 @@
+name: Inspect DongBaKe UI hook points
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/inspect-ui-hooks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print exact UI and lifecycle insertion points
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/dbk-src
+          unzip -q DongBaKe-source-24.zip -d /tmp/dbk-src
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("/tmp/dbk-src")
+          p = root / "app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+          lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+          keys = [
+              "override fun onCreate", "private fun buildInterface",
+              "private fun showMoreFeaturesScreen", "private fun showMemoryStatusScreen",
+              "private fun loadLocalModel", "private fun importModel",
+              "private fun showMore", "private fun showPersonal"
+          ]
+          found = set()
+          for key in keys:
+              hits = [i for i, line in enumerate(lines) if key in line]
+              for i in hits:
+                  found.add(key)
+                  a, b = max(0, i-8), min(len(lines), i+65)
+                  print(f"\n===== {key} around line {i+1} =====")
+                  for n in range(a, b):
+                      print(f"{n+1}: {lines[n]}")
+          print("\nFOUND:", sorted(found))
+          m = root / "app/src/main/AndroidManifest.xml"
+          print("\n===== MANIFEST =====")
+          print(m.read_text(encoding="utf-8", errors="replace"))
+          PY
