@@ -58,7 +58,15 @@ jobs:
           grep -q 'applicationId = "com.aiguanjia.app"' buildsrc/app/build.gradle.kts
           grep -q 'versionCode = 36' buildsrc/app/build.gradle.kts
           grep -q 'versionName = "0.12.2-thinking-budget-continuation"' buildsrc/app/build.gradle.kts
-          sha256sum DongBaKe-source-35.zip "$RUNNER_TEMP/source36.patch" | tee source-36-input-sha256.txt
+          sha256sum \
+            DongBaKe-source-35.zip \
+            patches/source36-parts/part00.txt patches/source36-parts/part01.txt patches/source36-parts/part02.txt patches/source36-parts/part03.txt patches/source36-parts/part04.txt \
+            patches/source36-continuation-detection.patch.gz.b64 \
+            patches/source36-cancelled-stop.patch.gz.b64 \
+            "$RUNNER_TEMP/source36.patch" \
+            "$RUNNER_TEMP/source36-continuation-detection.patch" \
+            "$RUNNER_TEMP/source36-cancelled-stop.patch" \
+            | tee source-36-input-sha256.txt
 
       - uses: actions/setup-java@v4
         with:
@@ -234,5 +242,8 @@ jobs:
           git add DongBaKe-source-36.zip
           if ! git diff --cached --quiet; then
             git commit -m "Add DongBaKe source-36 thinking-budget source archive"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
+          # The branch may advance after this run starts; rebase the archive commit before publishing.
+          git fetch origin "${GITHUB_REF_NAME}"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
