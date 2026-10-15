@@ -7,9 +7,9 @@ on:
       - work/source-36-thinking-budget
     paths:
       - 'DongBaKe-source-35.zip'
-      - 'patches/source36.patch.gz.b64'
       - 'patches/source36-parts/**'
       - 'patches/source36-continuation-detection.patch.gz.b64'
+      - 'patches/source36-cancelled-stop.patch.gz.b64'
       - '.github/workflows/build-apk-workflow-source-36.yml'
 
 permissions:
@@ -50,6 +50,11 @@ jobs:
           base64 --decode patches/source36-continuation-detection.patch.gz.b64 | gzip -dc > "$RUNNER_TEMP/source36-continuation-detection.patch"
           patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36-continuation-detection.patch"
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36-continuation-detection.patch"
+          base64 --decode patches/source36-cancelled-stop.patch.gz.b64 > "$RUNNER_TEMP/source36-cancelled-stop.patch.gz"
+          gzip -t "$RUNNER_TEMP/source36-cancelled-stop.patch.gz"
+          gzip -dc "$RUNNER_TEMP/source36-cancelled-stop.patch.gz" > "$RUNNER_TEMP/source36-cancelled-stop.patch"
+          patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36-cancelled-stop.patch"
+          patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36-cancelled-stop.patch"
           grep -q 'applicationId = "com.aiguanjia.app"' buildsrc/app/build.gradle.kts
           grep -q 'versionCode = 36' buildsrc/app/build.gradle.kts
           grep -q 'versionName = "0.12.2-thinking-budget-continuation"' buildsrc/app/build.gradle.kts
