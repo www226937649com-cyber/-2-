@@ -17,6 +17,8 @@ on:
     paths:
       - ".github/workflows/build-apk-workflow-source-33.yml"
       - ".github/scripts/patch-source-33.diff.gz.b64.part-*"
+      - ".github/scripts/patch-source-33-extra.diff.gz.b64.part-*"
+      - ".github/scripts/patch-source-33-extra2.diff.gz.b64.part-*"
 
 permissions:
   contents: write
@@ -53,6 +55,9 @@ jobs:
           cat .github/scripts/patch-source-33-extra.diff.gz.b64.part-* | base64 --decode | gzip -dc > "$RUNNER_TEMP/patch-source-33-extra.diff"
           test "$(wc -c < "$RUNNER_TEMP/patch-source-33-extra.diff")" -gt 10000
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/patch-source-33-extra.diff"
+          cat .github/scripts/patch-source-33-extra2.diff.gz.b64.part-* | base64 --decode | gzip -dc > "$RUNNER_TEMP/patch-source-33-extra2.diff"
+          test "$(wc -c < "$RUNNER_TEMP/patch-source-33-extra2.diff")" -gt 5000
+          patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/patch-source-33-extra2.diff"
           grep -q 'versionCode = 33' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
           grep -q 'versionName = "0.11.1-mobile-fast-path"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
           grep -q 'DONGBAKE_CPU_ONLY_BUILD' "$GITHUB_WORKSPACE/buildsrc/app/src/main/cpp/CMakeLists.txt"
@@ -60,7 +65,7 @@ jobs:
           grep -q 'GGML_CPU_KLEIDIAI=ON' "$GITHUB_WORKSPACE/buildsrc/tools/build_llama_cpp_android_vulkan.sh"
           grep -q 'chat_template_reasoning_control=disabled_via_qwen35_suffix' "$GITHUB_WORKSPACE/buildsrc/app/src/main/cpp/dongbake_llama_jni.cpp"
           mkdir -p "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation"
-          sha256sum "$RUNNER_TEMP/patch-source-33.diff" "$RUNNER_TEMP/patch-source-33-extra.diff" | tee "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation/patch-sha256.txt"
+          sha256sum "$RUNNER_TEMP/patch-source-33.diff" "$RUNNER_TEMP/patch-source-33-extra.diff" "$RUNNER_TEMP/patch-source-33-extra2.diff" | tee "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation/patch-sha256.txt"
           python3 -m unittest discover -s "$GITHUB_WORKSPACE/buildsrc/tests" -v 2>&1 | tee "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation/python-tests.log"
           cd "$GITHUB_WORKSPACE/buildsrc"
           bash tools/test_model_profile.sh 2>&1 | tee build/source-33-validation/model-profile-tests.log
