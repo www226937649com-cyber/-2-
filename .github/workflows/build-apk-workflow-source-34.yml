@@ -101,7 +101,7 @@ jobs:
         env:
           LLAMA_CPP_SOURCE_DIR: ${{ runner.temp }}/llama.cpp
           LLAMA_CPP_BUILD_DIR: ${{ runner.temp }}/llama.cpp-build-source34
-          LLAMA_CPP_INSTALL_DIR: ${{ github.workspace }}/buildsrc/build/llama.cpp-install-source34
+          LLAMA_CPP_INSTALL_DIR: ${{ github.workspace }}/buildsrc/build/llama.cpp-install-android-vulkan
           BUILD_JOBS: '2'
           BACKEND_PROFILE: vulkan
           ANDROID_ABIS: 'arm64-v8a x86_64'
