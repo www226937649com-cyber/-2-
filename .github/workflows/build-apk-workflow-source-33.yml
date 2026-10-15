@@ -1,0 +1,186 @@
+name: DongBaKe v0.11.1 mobile fast path
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_profile:
+        description: Native backend profile to build
+        required: true
+        type: choice
+        options:
+          - cpu-only
+          - vulkan
+        default: cpu-only
+  push:
+    branches:
+      - work/source-33-mobile-fast-path
+    paths:
+      - ".github/workflows/build-apk-workflow-source-33.yml"
+      - ".github/scripts/patch-source-33.diff.gz.b64.part-*"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: dongbake-source-33-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_NDK_VERSION: "27.2.12479018"
+  ANDROID_CMAKE_VERSION: "3.22.1"
+  BACKEND_PROFILE: ${{ github.event.inputs.backend_profile || 'cpu-only' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Check out diagnostic branch
+        uses: actions/checkout@v4
+
+      - name: Apply source-33 diagnostics and run source tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f "$GITHUB_WORKSPACE/DongBaKe-source-32.zip"
+          unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-32.zip"
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc"
+          unzip -q "$GITHUB_WORKSPACE/DongBaKe-source-32.zip" -d "$GITHUB_WORKSPACE/buildsrc"
+          cat .github/scripts/patch-source-33.diff.gz.b64.part-* | base64 --decode | gzip -dc > "$RUNNER_TEMP/patch-source-33.diff"
+          test "$(wc -c < "$RUNNER_TEMP/patch-source-33.diff")" -gt 25000
+          patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/patch-source-33.diff"
+          grep -q 'versionCode = 33' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'versionName = "0.11.1-mobile-fast-path"' "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts"
+          grep -q 'DONGBAKE_CPU_ONLY_BUILD' "$GITHUB_WORKSPACE/buildsrc/app/src/main/cpp/CMakeLists.txt"
+          grep -q 'BACKEND_PROFILE must be vulkan or cpu-only' "$GITHUB_WORKSPACE/buildsrc/tools/build_llama_cpp_android_vulkan.sh"
+          grep -q 'GGML_CPU_KLEIDIAI=ON' "$GITHUB_WORKSPACE/buildsrc/tools/build_llama_cpp_android_vulkan.sh"
+          grep -q 'chat_template_reasoning_control=disabled_via_qwen35_suffix' "$GITHUB_WORKSPACE/buildsrc/app/src/main/cpp/dongbake_llama_jni.cpp"
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation"
+          sha256sum "$RUNNER_TEMP/patch-source-33.diff" | tee "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation/patch-sha256.txt"
+          python3 -m unittest discover -s "$GITHUB_WORKSPACE/buildsrc/tests" -v 2>&1 | tee "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation/python-tests.log"
+          cd "$GITHUB_WORKSPACE/buildsrc"
+          bash tools/test_model_profile.sh 2>&1 | tee build/source-33-validation/model-profile-tests.log
+          bash tools/test_math_parser.sh 2>&1 | tee build/source-33-validation/math-parser-tests.log
+          bash tools/test_source_audit.sh 2>&1 | tee build/source-33-validation/source-audit-tests.log
+          bash -n tools/build_llama_cpp_android_vulkan.sh
+          git -C "$GITHUB_WORKSPACE" diff --check
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Set up Android SDK and native build dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y glslc spirv-headers libvulkan-dev ninja-build zip unzip
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}" "cmake;${ANDROID_CMAKE_VERSION}"
+          test -f "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
+          command -v ninja
+          command -v zip
+          command -v unzip
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Create source-33 archive without stale prebuilt backend libraries
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          find "$GITHUB_WORKSPACE/buildsrc/app/src/main/jniLibs" -type f -name '*.so' -delete 2>/dev/null || true
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation"
+          (cd "$GITHUB_WORKSPACE/buildsrc" && zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-33.zip" . -x 'build/*' '*/build/*' '*.pyc' '*/__pycache__/*')
+          unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-33.zip"
+          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-33.zip" | tee "$GITHUB_WORKSPACE/buildsrc/build/source-33-validation/source-archive-sha256.txt"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add DongBaKe-source-33.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "Add DongBaKe source-33 runtime diagnostics archive"
+            git push origin "$GITHUB_REF_NAME"
+          fi
+
+      - name: Compile true CPU-only or CPU+Vulkan llama.cpp backend
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        env:
+          LLAMA_CPP_TAG: "v0.6.0"
+          BUILD_JOBS: "2"
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_NDK="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION"
+          export PATH="$ANDROID_HOME/cmake/$ANDROID_CMAKE_VERSION/bin:$PATH"
+          export ANDROID_ABIS="arm64-v8a x86_64"
+          export BACKEND_PROFILE
+          export LLAMA_CPP_SOURCE_DIR="$RUNNER_TEMP/llama.cpp"
+          export LLAMA_CPP_BUILD_DIR="$RUNNER_TEMP/llama.cpp-build-android-$BACKEND_PROFILE"
+          export LLAMA_CPP_INSTALL_DIR="$GITHUB_WORKSPACE/buildsrc/build/llama.cpp-install-android-$BACKEND_PROFILE"
+          mkdir -p build/source-33-validation
+          bash tools/build_llama_cpp_android_vulkan.sh 2>&1 | tee "build/source-33-validation/native-$BACKEND_PROFILE-build.log"
+          for abi in arm64-v8a x86_64; do
+            for lib in libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+              test -f "app/src/main/jniLibs/$abi/$lib" || { echo "Missing $abi/$lib"; exit 2; }
+            done
+            if [[ "$BACKEND_PROFILE" == "cpu-only" ]]; then
+              test ! -e "app/src/main/jniLibs/$abi/libggml-vulkan.so"
+            else
+              test -f "app/src/main/jniLibs/$abi/libggml-vulkan.so"
+            fi
+          done
+          {
+            echo "backendProfile=$BACKEND_PROFILE"
+            echo "llamaCppTag=v0.6.0"
+            echo "abis=arm64-v8a,x86_64"
+            for abi in arm64-v8a x86_64; do
+              find "app/src/main/jniLibs/$abi" -maxdepth 1 -type f -name '*.so' -print0 | sort -z | xargs -0 sha256sum
+            done
+          } > "build/source-33-validation/native-backend-proof.txt"
+
+      - name: Build APKs and run Android unit tests
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "$BACKEND_PROFILE" == "cpu-only" ]]; then GRADLE_BACKEND=cpu; else GRADLE_BACKEND=vulkan; fi
+          gradle --no-daemon --project-dir "$GITHUB_WORKSPACE/buildsrc" --stacktrace \
+            -PdongbakeNativeBackend="$GRADLE_BACKEND" \
+            :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease 2>&1 | tee "build/source-33-validation/gradle-$BACKEND_PROFILE-build.log"
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          {
+            echo "versionCode=33"
+            echo "versionName=0.11.1-mobile-fast-path"
+            echo "backendProfile=$BACKEND_PROFILE"
+            echo "abis=arm64-v8a,x86_64"
+            echo "runId=$GITHUB_RUN_ID"
+            echo "commit=$GITHUB_SHA"
+            sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release-unsigned.apk
+          } > app/build/outputs/apk/build-version-proof.txt
+
+      - name: Upload APKs, source, native libraries and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-33-${{ github.event.inputs.backend_profile || 'cpu-only' }}-run-${{ github.run_number }}
+          path: |
+            DongBaKe-source-33.zip
+            buildsrc/app/build/outputs/apk/**
+            buildsrc/app/build/reports/**
+            buildsrc/app/src/main/jniLibs/**/*.so
+            buildsrc/build/llama.cpp-install-android-*/**/*.so
+            buildsrc/build/source-33-validation/*.log
+            buildsrc/build/source-33-validation/*.txt
+            buildsrc/app/build/outputs/logs/**
+          if-no-files-found: warn
+          retention-days: 14
