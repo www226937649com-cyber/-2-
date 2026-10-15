@@ -1,0 +1,234 @@
+name: DongBaKe Android build - source-37 thinking budget continuation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/source-37-thinking-budget
+    paths:
+      - 'DongBaKe-source-36.zip'
+      - 'patches/source37.patch.gz.b64'
+      - 'patches/source37-parts/**'
+      - 'patches/source37-continuation-detection.patch.gz.b64'
+      - 'patches/source37-cancelled-stop.patch.gz.b64'
+      - '.github/workflows/build-apk-workflow-source-37.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dongbake-source-37-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_NDK_VERSION: '27.2.12479018'
+  ANDROID_CMAKE_VERSION: '3.22.1'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply source-37 context, prompt and diagnostics patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f DongBaKe-source-36.zip
+          unzip -t DongBaKe-source-36.zip
+          mkdir -p "$GITHUB_WORKSPACE/buildsrc"
+          unzip -q DongBaKe-source-36.zip -d "$GITHUB_WORKSPACE/buildsrc"
+          rm -rf "$GITHUB_WORKSPACE/buildsrc/app/.cxx" "$GITHUB_WORKSPACE/buildsrc/.kotlin" "$GITHUB_WORKSPACE/buildsrc/.gradle"
+          test "$(wc -c < patches/source37.patch.gz.b64)" -eq 36000
+          base64 --decode patches/source37.patch.gz.b64 > "$RUNNER_TEMP/source37.patch.gz"
+          gzip -t "$RUNNER_TEMP/source37.patch.gz"
+          gzip -dc "$RUNNER_TEMP/source37.patch.gz" > "$RUNNER_TEMP/source37.patch"
+          patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
+          patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
+          grep -q 'applicationId = "com.aiguanjia.app"' buildsrc/app/build.gradle.kts
+          grep -q 'versionCode = 37' buildsrc/app/build.gradle.kts
+          grep -q 'versionName = "0.12.3-context-logging"' buildsrc/app/build.gradle.kts
+          sha256sum DongBaKe-source-36.zip patches/source37.patch.gz.b64 "$RUNNER_TEMP/source37.patch" | tee source-37-input-sha256.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android and native build dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;${ANDROID_NDK_VERSION}" "cmake;${ANDROID_CMAKE_VERSION}"
+          sudo apt-get update
+          sudo apt-get install -y glslc spirv-headers libvulkan-dev ninja-build zip unzip
+          test -f "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Run source tests and source audit
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build/source-37-validation
+          python3 -m unittest discover -s tests -v 2>&1 | tee build/source-37-validation/python-tests.log
+          bash tools/test_model_profile.sh 2>&1 | tee build/source-37-validation/model-profile-tests.log
+          bash tools/test_math_parser.sh 2>&1 | tee build/source-37-validation/math-parser-tests.log
+          bash tools/test_source_audit.sh 2>&1 | tee build/source-37-validation/source-audit-tests.log
+          bash -n tools/build_llama_cpp_android_vulkan.sh
+          {
+            echo "# source-37 validation log generated during this CI run"
+            echo
+            cat build/source-37-validation/python-tests.log
+            cat build/source-37-validation/model-profile-tests.log
+            cat build/source-37-validation/math-parser-tests.log
+            cat build/source-37-validation/source-audit-tests.log
+            echo "bash -n tools/build_llama_cpp_android_vulkan.sh: OK"
+          } > tests.log
+
+      - name: Build llama.cpp CPU and Vulkan libraries
+        working-directory: ${{ github.workspace }}/buildsrc
+        env:
+          LLAMA_CPP_SOURCE_DIR: ${{ runner.temp }}/llama.cpp
+          LLAMA_CPP_BUILD_DIR: ${{ runner.temp }}/llama.cpp-build-source37
+          LLAMA_CPP_INSTALL_DIR: ${{ github.workspace }}/buildsrc/build/llama.cpp-install-android-vulkan
+          BUILD_JOBS: '2'
+          BACKEND_PROFILE: vulkan
+          ANDROID_ABIS: 'arm64-v8a x86_64'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export ANDROID_NDK="$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          export PATH="$ANDROID_HOME/cmake/${ANDROID_CMAKE_VERSION}/bin:$PATH"
+          bash tools/build_llama_cpp_android_vulkan.sh 2>&1 | tee build/source-37-validation/native-vulkan-build.log
+          for abi in arm64-v8a x86_64; do
+            for lib in libllama.so libggml.so libggml-base.so libggml-cpu.so libggml-vulkan.so; do
+              test -f "app/src/main/jniLibs/$abi/$lib" || { echo "Missing $abi/$lib"; exit 4; }
+            done
+          done
+
+      - name: Run Android tests and build APKs
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p build/source-37-validation
+          gradle --no-daemon --stacktrace -PdongbakeNativeBackend=vulkan :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease 2>&1 | tee build/source-37-validation/gradle-build.log
+          APK="$GITHUB_WORKSPACE/buildsrc/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee build/source-37-validation/apk-badging.txt
+          grep -q "package: name='com.aiguanjia.app' versionCode='37' versionName='0.12.2-thinking-budget-continuation'" build/source-37-validation/apk-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK" 2>&1 | tee build/source-37-validation/apk-signature-check.txt
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "source_commit=$GITHUB_SHA"
+            echo "applicationId=com.aiguanjia.app"
+            echo "versionCode=37"
+            echo "versionName=0.12.2-thinking-budget-continuation"
+            echo "thinking_soft_targets=quick:64; balanced:384; deep:1024"
+            echo "hard_output_cap=context_sensitive_max_4096"
+            echo "device_execution=not_yet_verified"
+            sha256sum "$APK"
+          } > build/source-37-validation/build-provenance.txt
+
+      - name: Build safe side-by-side test APK
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p app/build/outputs/apk/same-package app/build/outputs/apk/side-by-side
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/same-package/DongBaKe-v0.12.3-context-logging-same-package-debug.apk
+          cp app/build.gradle.kts "$RUNNER_TEMP/source37-app-build.gradle.kts"
+          cp app/src/main/AndroidManifest.xml "$RUNNER_TEMP/source37-AndroidManifest.xml"
+          restore_build_files() {
+            cp "$RUNNER_TEMP/source37-app-build.gradle.kts" app/build.gradle.kts
+            cp "$RUNNER_TEMP/source37-AndroidManifest.xml" app/src/main/AndroidManifest.xml
+          }
+          trap restore_build_files EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          gradle = Path("app/build.gradle.kts")
+          manifest = Path("app/src/main/AndroidManifest.xml")
+          g = gradle.read_text()
+          m = manifest.read_text()
+          old_id = 'applicationId = "com.aiguanjia.app"'
+          new_id = 'applicationId = "com.aiguanjia.app.fix37"'
+          old_label = 'android:label="东巴壳"'
+          new_label = 'android:label="东巴壳（性能日志测试）"'
+          if g.count(old_id) != 1:
+              raise SystemExit("Expected exactly one main applicationId before side-by-side build")
+          if m.count(old_label) != 1:
+              raise SystemExit("Expected exactly one main app label before side-by-side build")
+          gradle.write_text(g.replace(old_id, new_id, 1))
+          manifest.write_text(m.replace(old_label, new_label, 1))
+          PY
+          gradle --no-daemon --stacktrace -PdongbakeNativeBackend=vulkan :app:assembleDebug 2>&1 | tee build/source-37-validation/gradle-side-by-side-build.log
+          SIDE_APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$SIDE_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$SIDE_APK" | tee build/source-37-validation/side-by-side-apk-badging.txt
+          grep -q "package: name='com.aiguanjia.app.fix37' versionCode='37' versionName='0.12.2-thinking-budget-continuation'" build/source-37-validation/side-by-side-apk-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$SIDE_APK" 2>&1 | tee build/source-37-validation/side-by-side-apk-signature-check.txt
+          cp "$SIDE_APK" app/build/outputs/apk/side-by-side/DongBaKe-v0.12.3-context-logging-side-by-side.apk
+          {
+            echo "applicationId=com.aiguanjia.app.fix37"
+            echo "versionCode=36"
+            echo "versionName=0.12.2-thinking-budget-continuation"
+            echo "label=东巴壳（性能日志测试）"
+            echo "installMode=side-by-side; does not replace com.aiguanjia.app"
+            echo "modelStore=/storage/emulated/0/Android/data/com.aiguanjia.app.fix37/files/models"
+            sha256sum app/build/outputs/apk/side-by-side/DongBaKe-v0.12.3-context-logging-side-by-side.apk
+          } > build/source-37-validation/side-by-side-proof.txt
+          restore_build_files
+          trap - EXIT
+
+      - name: Package clean source-37 archive
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd "$GITHUB_WORKSPACE/buildsrc"
+          zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" . -x './app/build/*' './app/.cxx/*' './app/src/main/jniLibs/*' './build/*' './.gradle/*' './.kotlin/*' './**/__pycache__/*' './**/*.pyc'
+          unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-37.zip"
+          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" | tee -a "$GITHUB_WORKSPACE/source-37-input-sha256.txt"
+
+      - name: Upload APKs, source and validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-37-v0.12.3-context-logging-run-${{ github.run_number }}
+          path: |
+            buildsrc/app/build/outputs/apk/**
+            buildsrc/app/build/reports/**
+            buildsrc/app/src/main/jniLibs/arm64-v8a/*.so
+            buildsrc/app/src/main/jniLibs/x86_64/*.so
+            buildsrc/build/source-37-validation/*.log
+            buildsrc/build/source-37-validation/*.txt
+            DongBaKe-source-37.zip
+            source-37-input-sha256.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish source-37 archive to repair branch
+        if: success() && github.event_name == 'push' && github.ref_name == 'work/source-37-thinking-budget'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+actions@users.noreply.github.com"
+          git add DongBaKe-source-37.zip
+          if ! git diff --cached --quiet; then
+            git commit -m "Add DongBaKe source-37 thinking-budget source archive"
+          fi
+          # The branch may advance after this run starts; rebase the archive commit before publishing.
+          git fetch origin "${GITHUB_REF_NAME}"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
