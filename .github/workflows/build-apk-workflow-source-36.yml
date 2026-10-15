@@ -9,6 +9,7 @@ on:
       - 'DongBaKe-source-35.zip'
       - 'patches/source36.patch.gz.b64'
       - 'patches/source36-parts/**'
+      - 'patches/source36-continuation-detection.patch.gz.b64'
       - '.github/workflows/build-apk-workflow-source-36.yml'
 
 permissions:
@@ -46,6 +47,9 @@ jobs:
           gzip -dc "$RUNNER_TEMP/source36.patch.gz" > "$RUNNER_TEMP/source36.patch"
           patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36.patch"
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36.patch"
+          base64 --decode patches/source36-continuation-detection.patch.gz.b64 | gzip -dc > "$RUNNER_TEMP/source36-continuation-detection.patch"
+          patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36-continuation-detection.patch"
+          patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source36-continuation-detection.patch"
           grep -q 'applicationId = "com.aiguanjia.app"' buildsrc/app/build.gradle.kts
           grep -q 'versionCode = 36' buildsrc/app/build.gradle.kts
           grep -q 'versionName = "0.12.2-thinking-budget-continuation"' buildsrc/app/build.gradle.kts
@@ -82,6 +86,15 @@ jobs:
           bash tools/test_math_parser.sh 2>&1 | tee build/source-36-validation/math-parser-tests.log
           bash tools/test_source_audit.sh 2>&1 | tee build/source-36-validation/source-audit-tests.log
           bash -n tools/build_llama_cpp_android_vulkan.sh
+          {
+            echo "# source-36 validation log generated during this CI run"
+            echo
+            cat build/source-36-validation/python-tests.log
+            cat build/source-36-validation/model-profile-tests.log
+            cat build/source-36-validation/math-parser-tests.log
+            cat build/source-36-validation/source-audit-tests.log
+            echo "bash -n tools/build_llama_cpp_android_vulkan.sh: OK"
+          } > tests.log
 
       - name: Build llama.cpp CPU and Vulkan libraries
         working-directory: ${{ github.workspace }}/buildsrc
