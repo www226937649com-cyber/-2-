@@ -155,7 +155,7 @@ jobs:
             done
           } > "build/source-33-validation/native-backend-proof.txt"
 
-      - name: Build APKs and run Android unit tests
+      - name: Build APKs, run unit tests, and create a safe side-by-side test app
         working-directory: ${{ github.workspace }}/buildsrc
         shell: bash
         run: |
@@ -163,9 +163,18 @@ jobs:
           if [[ "$BACKEND_PROFILE" == "cpu-only" ]]; then GRADLE_BACKEND=cpu; else GRADLE_BACKEND=vulkan; fi
           gradle --no-daemon --project-dir "$GITHUB_WORKSPACE/buildsrc" --stacktrace \
             -PdongbakeNativeBackend="$GRADLE_BACKEND" \
-            :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease 2>&1 | tee "build/source-33-validation/gradle-$BACKEND_PROFILE-build.log"
+            :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease 2>&1 | tee "build/source-33-validation/gradle-$GRADLE_BACKEND-build.log"
           test -f app/build/outputs/apk/debug/app-debug.apk
           test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          mkdir -p app/build/outputs/apk/same-package app/build/outputs/apk/side-by-side
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/same-package/DongBaKe-v0.11.1-same-package-debug.apk
+          # CI debug signing keys can differ between runs. Build a second package ID so
+          # testing never requires uninstalling the existing app or risking its model data.
+          sed -i 's/applicationId = "com.aiguanjia.app"/applicationId = "com.aiguanjia.app.fasttest"/' app/build.gradle.kts
+          sed -i 's/android:label="东巴壳"/android:label="东巴壳（快速测试）"/' app/src/main/AndroidManifest.xml
+          gradle --no-daemon --project-dir "$GITHUB_WORKSPACE/buildsrc" --stacktrace \
+            -PdongbakeNativeBackend="$GRADLE_BACKEND" :app:assembleDebug 2>&1 | tee "build/source-33-validation/gradle-side-by-side-build.log"
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/side-by-side/DongBaKe-v0.11.1-mobile-fast-path-side-by-side.apk
           {
             echo "versionCode=33"
             echo "versionName=0.11.1-mobile-fast-path"
@@ -173,7 +182,9 @@ jobs:
             echo "abis=arm64-v8a,x86_64"
             echo "runId=$GITHUB_RUN_ID"
             echo "commit=$GITHUB_SHA"
-            sha256sum app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release-unsigned.apk
+            echo "samePackageId=com.aiguanjia.app (may conflict with prior debug signature)"
+            echo "sideBySidePackageId=com.aiguanjia.app.fasttest"
+            sha256sum app/build/outputs/apk/same-package/DongBaKe-v0.11.1-same-package-debug.apk app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/side-by-side/DongBaKe-v0.11.1-mobile-fast-path-side-by-side.apk
           } > app/build/outputs/apk/build-version-proof.txt
 
       - name: Upload APKs, source, native libraries and diagnostics
