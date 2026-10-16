@@ -179,7 +179,7 @@
 +            "", "generatedTokens=0; cancelled=false", 64, false, "prompt_prefill_batch_failed result=-1"
 +        ))
 +    }
- }}
+ }
 
 --- a/app/src/main/java/com/aiguanjia/app/MainActivity.kt
 +++ b/app/src/main/java/com/aiguanjia/app/MainActivity.kt
