@@ -9,7 +9,6 @@ on:
       - 'DongBaKe-source-36.zip'
       - 'patches/source37-parts/**'
       - 'patches/source37-kotlin-compile-fix.patch'
-      - 'patches/source37-callsite-budget-fix.patch'
       - '.github/workflows/build-apk-workflow-source-37.yml'
 
 permissions:
@@ -52,11 +51,17 @@ jobs:
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
           patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
-          patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-callsite-budget-fix.patch
-          patch --batch --forward --fuzz=0 -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-callsite-budget-fix.patch
           python3 - <<'PY'
           from pathlib import Path
-          source = Path("buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt").read_text()
+          source_path = Path("buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt")
+          source = source_path.read_text()
+          old = "                        loadedModelProfile?.supportsReasoningTemplate == true\n                    )"
+          new = "                        loadedModelProfile?.supportsReasoningTemplate == true,\n                        aiDisplayName(),\n                        generationBudget.softThinkingTokens\n                    )"
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"expected one unmodified prompt call-site, found {count}")
+          source_path.write_text(source.replace(old, new, 1))
+          source = source_path.read_text()
           marker = "val systemPrompt = InferencePromptPolicy.systemPrompt("
           start = source.find(marker)
           if start < 0:
@@ -78,7 +83,7 @@ jobs:
           grep -q 'versionCode=37' buildsrc/README.md
           grep -q 'researchPrefix = if (webResearch)' buildsrc/app/src/main/java/com/aiguanjia/app/InferencePromptPolicy.kt
           grep -q 'assistantName: String = "中文伙伴"' buildsrc/app/src/main/java/com/aiguanjia/app/InferencePromptPolicy.kt
-          sha256sum DongBaKe-source-36.zip patches/source37-parts/part00.txt patches/source37-parts/part01.txt patches/source37-parts/part02.txt patches/source37-parts/part03.txt patches/source37-parts/part04.txt patches/source37-parts/part05.txt patches/source37-parts/part06.txt "$RUNNER_TEMP/source37.patch.gz" "$RUNNER_TEMP/source37.patch" patches/source37-kotlin-compile-fix.patch patches/source37-callsite-budget-fix.patch | tee source-37-input-sha256.txt
+          sha256sum DongBaKe-source-36.zip patches/source37-parts/part00.txt patches/source37-parts/part01.txt patches/source37-parts/part02.txt patches/source37-parts/part03.txt patches/source37-parts/part04.txt patches/source37-parts/part05.txt patches/source37-parts/part06.txt "$RUNNER_TEMP/source37.patch.gz" "$RUNNER_TEMP/source37.patch" patches/source37-kotlin-compile-fix.patch | tee source-37-input-sha256.txt
 
       - uses: actions/setup-java@v4
         with:
