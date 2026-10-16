@@ -37,14 +37,15 @@
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(draftLabels)
 
-@@ -3624,6 +3624,7 @@
+@@ -3624,6 +3624,8 @@
                      val systemPrompt = InferencePromptPolicy.systemPrompt(
                          responseModeIndex,
                          simpleQuestion,
                          webResearch,
 -                        loadedModelProfile?.supportsReasoningTemplate == true
 +                        loadedModelProfile?.supportsReasoningTemplate == true,
-+                        aiDisplayName()
++                        aiDisplayName(),
++                        generationBudget.softThinkingTokens
                      )
 --- a/README.md
 +++ b/README.md
@@ -59,7 +60,7 @@
  /** Compact, model-agnostic control prompts. Persona memories and retrieved material belong in the user prompt. */
  internal object InferencePromptPolicy {
 -    fun systemPrompt(modeIndex: Int, simpleQuestion: Boolean, webResearch: Boolean, supportsReasoning: Boolean): String {
-+    fun systemPrompt(modeIndex: Int, simpleQuestion: Boolean, webResearch: Boolean, supportsReasoning: Boolean, assistantName: String = "中文伙伴"): String {
++    fun systemPrompt(modeIndex: Int, simpleQuestion: Boolean, webResearch: Boolean, supportsReasoning: Boolean, assistantName: String = "中文伙伴", softThinkingTokens: Int = 384): String {
 +        val safeAssistantName = assistantName.filterNot { it.isISOControl() }.trim().take(16).ifBlank { "中文伙伴" }
          val mode = modeIndex.coerceIn(0, 2)
          val base = when {
@@ -69,10 +70,10 @@
 +                "你是$safeAssistantName。用简体中文准确简洁地回答；简单问题直接答，不展示推理；不确定就说明，不编造。"
              mode == 1 ->
 -                "你是用户的中文伙伴。简体中文作答，先结论后必要理由；有结论立即回答，不反复验证；不确定就说明。"
-+                "你是$safeAssistantName。简体中文作答，先结论后必要理由；有结论立即回答，不反复验证；不确定就说明。"
++                "你是$safeAssistantName。简体中文先结论后理由；思考约${softThinkingTokens} tokens内，有结论立即回答，不反复验证；不确定就说明。"
              else ->
 -                "你是用户的中文伙伴。简体中文作答，复杂问题深入分析；结论明确就立即回答，不反复验证，不编造。"
-+                "你是$safeAssistantName。简体中文作答，复杂问题深入分析；结论明确就立即回答，不反复验证，不编造。"
++                "你是$safeAssistantName。简体中文分析复杂问题，思考约${softThinkingTokens} tokens内；有结论立即回答，不反复验证，不编造。"
          }
          // Do not inject model-specific control tokens into templates that do not advertise support.
          val control = if (!supportsReasoning) "" else when {
@@ -90,7 +91,16 @@
  }
 --- a/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
 +++ b/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
-@@ -23,7 +23,14 @@ class InferencePromptPolicyTest {
+@@ -7,7 +7,8 @@ class InferencePromptPolicyTest {
+         for (mode in 0..2) {
+             val prompt = InferencePromptPolicy.systemPrompt(mode, simpleQuestion = false, webResearch = false, supportsReasoning = true)
+             assertTrue("Mode $mode prompt was ${prompt.length} chars", prompt.length <= 100)
+             assertTrue(prompt.contains("简体中文"))
+             assertTrue(prompt.contains("不确定") || prompt.contains("不编造"))
++            assertTrue(mode == 0 || prompt.contains("tokens内"))
+         }
+     }
+@@ -23,7 +24,14 @@ class InferencePromptPolicyTest {
      @Test fun reasoningDirectiveIsExplicitOnlyWhenSupportedAndNeeded() {
          val unsupported = InferencePromptPolicy.systemPrompt(1, false, false, false)
          assertTrue(!unsupported.contains("/think"))
