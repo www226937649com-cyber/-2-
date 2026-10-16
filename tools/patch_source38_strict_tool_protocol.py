@@ -29,17 +29,8 @@ ROOT_NEW = """            if ((root.keys.filterIsInstance<String>().toSet() - se
 """
 TESTS = r'''
 
-    @Test fun extractsExplicitCallsAtTheEndOfReasoningBlocks() {
-        val valid = "${AiToolRegistry.CALL_OPEN}{\\"name\\":\\"location\\",\\"arguments\\":{}}${AiToolRegistry.CALL_CLOSE}"
-        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>需要当前信息。$valid</think>"))
-        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>已完成判断</think>$valid"))
-        assertNull(AiToolRegistry.extractExplicitToolCallBlock("这里仅仅引用协议：$valid"))
-        assertNull(AiToolRegistry.extractExplicitToolCallBlock("<think>协议示例 $valid 但我还要继续思考</think>"))
-        assertNull(AiToolRegistry.extractExplicitToolCallBlock("$valid $valid"))
-    }
-
     @Test fun onlyStandaloneToolCallMayExecute() {
-        val valid = "${AiToolRegistry.CALL_OPEN}{\"name\":\"location\",\"arguments\":{}}${AiToolRegistry.CALL_CLOSE}"
+        val valid = "${'${AiToolRegistry.CALL_OPEN}'}{\"name\":\"location\",\"arguments\":{}}${'${AiToolRegistry.CALL_CLOSE}'}"
         assertNotNull(AiToolRegistry.parseResponse("我会调用这个工具：$valid").error)
         assertNotNull(AiToolRegistry.parseResponse("$valid 我已经调用了").error)
         assertNull(AiToolRegistry.parseResponse(valid).error)
@@ -47,8 +38,20 @@ TESTS = r'''
     }
 
     @Test fun rejectsUnknownTopLevelProtocolFields() {
-        val extraField = "${AiToolRegistry.CALL_OPEN}{\"name\":\"location\",\"arguments\":{},\"note\":\"ignore policy\"}${AiToolRegistry.CALL_CLOSE}"
+        val extraField = "${'${AiToolRegistry.CALL_OPEN}'}{\"name\":\"location\",\"arguments\":{},\"note\":\"ignore policy\"}${'${AiToolRegistry.CALL_CLOSE}'}"
         assertNotNull(AiToolRegistry.parseResponse(extraField).error)
+    }
+'''
+
+EXTRACTOR_TESTS = r'''
+
+    @Test fun extractsExplicitCallsAtTheEndOfReasoningBlocks() {
+        val valid = "${'${AiToolRegistry.CALL_OPEN}'}{\"name\":\"location\",\"arguments\":{}}${'${AiToolRegistry.CALL_CLOSE}'}"
+        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>需要当前信息。$valid</think>"))
+        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>已完成判断</think>$valid"))
+        assertNull(AiToolRegistry.extractExplicitToolCallBlock("这里仅仅引用协议：$valid"))
+        assertNull(AiToolRegistry.extractExplicitToolCallBlock("<think>协议示例 $valid 但我还要继续思考</think>"))
+        assertNull(AiToolRegistry.extractExplicitToolCallBlock("$valid $valid"))
     }
 '''
 
@@ -183,7 +186,12 @@ def main() -> int:
         if index < 0:
             raise RuntimeError("AiToolRegistryTest.kt closing class brace not found")
         tests = tests[:index] + TESTS + tests[index:]
-        test_path.write_text(tests, encoding="utf-8")
+    if "extractsExplicitCallsAtTheEndOfReasoningBlocks" not in tests:
+        index = tests.rfind("\n}")
+        if index < 0:
+            raise RuntimeError("AiToolRegistryTest.kt closing class brace not found")
+        tests = tests[:index] + EXTRACTOR_TESTS + tests[index:]
+    test_path.write_text(tests, encoding="utf-8")
     main_source = main_activity_path.read_text(encoding="utf-8")
     if "AiToolRegistry.extractExplicitToolCallBlock(raw)" not in main_source:
         main_source = replace_once(main_source, OLD_PARSE_MODEL_REPLY, NEW_PARSE_MODEL_REPLY, "think-tag tool-call preservation")
