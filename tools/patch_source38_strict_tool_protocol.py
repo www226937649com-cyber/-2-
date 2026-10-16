@@ -198,7 +198,16 @@ def main() -> int:
     test_path.write_text(tests, encoding="utf-8")
     main_source = main_activity_path.read_text(encoding="utf-8")
     if "AiToolRegistry.extractExplicitToolCallBlock(raw)" not in main_source:
-        main_source = replace_once(main_source, OLD_PARSE_MODEL_REPLY, NEW_PARSE_MODEL_REPLY, "think-tag tool-call preservation")
+        method_start = main_source.find("    private fun parseModelReply(raw: String): ModelReply {")
+        if method_start < 0:
+            raise RuntimeError("parseModelReply method start not found in MainActivity.kt")
+        next_method = main_source.find("\\n    private fun ", method_start + 1)
+        if next_method < 0:
+            raise RuntimeError("parseModelReply next method boundary not found in MainActivity.kt")
+        current_method = main_source[method_start:next_method]
+        if "thoughtPattern" not in current_method or "ModelReply(" not in current_method:
+            raise RuntimeError("parseModelReply structure differs from expected safe patch target")
+        main_source = main_source[:method_start] + NEW_PARSE_MODEL_REPLY.rstrip() + main_source[next_method:]
         main_activity_path.write_text(main_source, encoding="utf-8")
     insert_python_tests(progress_path, "test_old_pre_ai_routes_remain_removed_after_tool_refactor", PROGRESS_TEST)
     insert_python_tests(runtime_path, "test_legacy_fixed_source_search_synthesis_is_not_used_for_dispatch", RUNTIME_TEST)
