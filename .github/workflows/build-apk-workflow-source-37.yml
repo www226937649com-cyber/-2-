@@ -56,15 +56,19 @@ jobs:
           patch --batch --forward --fuzz=0 -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-callsite-budget-fix.patch
           python3 - <<'PY'
           from pathlib import Path
-          import re
           source = Path("buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt").read_text()
-          match = re.search(r"val systemPrompt = InferencePromptPolicy\\.systemPrompt\\(([\\s\\S]*?)\\n\\s*\\)", source)
-          if not match:
+          marker = "val systemPrompt = InferencePromptPolicy.systemPrompt("
+          start = source.find(marker)
+          if start < 0:
               raise SystemExit("source-37 prompt-policy call not found")
-          args = match.group(1)
+          close = source.find("\n                    )", start)
+          if close < 0:
+              raise SystemExit("source-37 prompt-policy call is not closed")
+          args = source[start:close]
           if "aiDisplayName()" not in args or "generationBudget.softThinkingTokens" not in args:
               raise SystemExit("source-37 prompt call-site must pass custom AI name and selected-mode soft thinking tokens")
           print("source-37 prompt call-site budget/name integration: OK")
+          PY
           PY
           grep -q 'aiDisplayName()' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt
           test "$(grep -c 'setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt)" -eq 6
@@ -75,7 +79,7 @@ jobs:
           grep -q 'versionCode=37' buildsrc/README.md
           grep -q 'researchPrefix = if (webResearch)' buildsrc/app/src/main/java/com/aiguanjia/app/InferencePromptPolicy.kt
           grep -q 'assistantName: String = "中文伙伴"' buildsrc/app/src/main/java/com/aiguanjia/app/InferencePromptPolicy.kt
-          sha256sum DongBaKe-source-36.zip patches/source37-parts/part00.txt patches/source37-parts/part01.txt patches/source37-parts/part02.txt patches/source37-parts/part03.txt patches/source37-parts/part04.txt patches/source37-parts/part05.txt patches/source37-parts/part06.txt "$RUNNER_TEMP/source37.patch.gz" "$RUNNER_TEMP/source37.patch" patches/source37-kotlin-compile-fix.patch | tee source-37-input-sha256.txt
+          sha256sum DongBaKe-source-36.zip patches/source37-parts/part00.txt patches/source37-parts/part01.txt patches/source37-parts/part02.txt patches/source37-parts/part03.txt patches/source37-parts/part04.txt patches/source37-parts/part05.txt patches/source37-parts/part06.txt "$RUNNER_TEMP/source37.patch.gz" "$RUNNER_TEMP/source37.patch" patches/source37-kotlin-compile-fix.patch patches/source37-callsite-budget-fix.patch | tee source-37-input-sha256.txt
 
       - uses: actions/setup-java@v4
         with:
