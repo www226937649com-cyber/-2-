@@ -50,12 +50,54 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
         raise RuntimeError(f"{label}: expected one old anchor or already-patched new anchor, found {count}")
     return source.replace(old, new, 1)
 
+PROGRESS_TEST = r'''
+    def test_old_pre_ai_routes_remain_removed_after_tool_refactor(self):
+        for marker in (
+            'ToolDecisionEngine',
+            'routeForQuestion(',
+            'runCalculatorAnswer(',
+            'runSearchAndAnswer(',
+            'shouldUseWebSearch(',
+            'generatorForSynthesis(',
+            '自动整合检索结果',
+            'freshOrVerifiableSignals',
+        ):
+            with self.subTest(marker=marker):
+                self.assertNotIn(marker, self.main)
+        self.assertIn('runModelWithTools(contextPrompt, generator)', self.main)
+        self.assertIn('AiToolRegistry.parseResponse(reply.answer)', self.main)
+
+    def test_existing_task_stage_visibility_survives_tool_refactor(self):
+        for marker in ('"AI 决策与工具调度"', '"交给 AI 判断"', '"构建本地提示词"', '"原生逐 Token 推理中"'):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.main)
+'''
+
+RUNTIME_TEST = r'''
+    def test_legacy_fixed_source_search_synthesis_is_not_used_for_dispatch(self):
+        source = self.text("app/src/main/java/com/aiguanjia/app/MainActivity.kt")
+        self.assertNotIn("SearchSynthesisPolicy.forMode", source)
+        self.assertNotIn("results.take(synthesisBudget.maxSources)", source)
+        self.assertNotIn('"search_synthesis_prompt_budget"', source)
+        self.assertIn("runModelWithTools(contextPrompt, generator)", source)
+'''
+
+def insert_python_tests(path: pathlib.Path, method_marker: str, block: str) -> None:
+    source = path.read_text(encoding="utf-8")
+    if method_marker in source:
+        return
+    main_marker = '\\nif __name__ == "__main__":'
+    index = source.rfind(main_marker)
+    if index < 0:
+        raise RuntimeError(f"main guard not found in {path}")
+    path.write_text(source[:index] + block + source[index:], encoding="utf-8")
+
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: patch_source38_strict_tool_protocol.py <AiToolRegistry.kt> <AiToolRegistryTest.kt>", file=sys.stderr)
+    if len(sys.argv) != 5:
+        print("usage: patch_source38_strict_tool_protocol.py <AiToolRegistry.kt> <AiToolRegistryTest.kt> <test_progress_audit.py> <test_runtime_observability.py>", file=sys.stderr)
         return 2
-    registry_path, test_path = map(pathlib.Path, sys.argv[1:])
-    for path in (registry_path, test_path):
+    registry_path, test_path, progress_path, runtime_path = map(pathlib.Path, sys.argv[1:])
+    for path in (registry_path, test_path, progress_path, runtime_path):
         if not path.is_file():
             print(f"required file missing: {path}", file=sys.stderr)
             return 3
@@ -70,12 +112,20 @@ def main() -> int:
             raise RuntimeError("AiToolRegistryTest.kt closing class brace not found")
         tests = tests[:index] + TESTS + tests[index:]
         test_path.write_text(tests, encoding="utf-8")
+    insert_python_tests(progress_path, "test_old_pre_ai_routes_remain_removed_after_tool_refactor", PROGRESS_TEST)
+    insert_python_tests(runtime_path, "test_legacy_fixed_source_search_synthesis_is_not_used_for_dispatch", RUNTIME_TEST)
     verify_registry = registry_path.read_text(encoding="utf-8")
     verify_tests = test_path.read_text(encoding="utf-8")
+    progress_source = progress_path.read_text(encoding="utf-8")
+    runtime_source = runtime_path.read_text(encoding="utf-8")
     if "工具调用响应不能包含调用标记以外的自然语言文本" not in verify_registry:
         raise RuntimeError("strict output-boundary check did not land")
     if "未知顶层字段" not in verify_registry or "onlyStandaloneToolCallMayExecute" not in verify_tests:
         raise RuntimeError("strict protocol validation tests did not land")
+    if "test_old_pre_ai_routes_remain_removed_after_tool_refactor" not in progress_source:
+        raise RuntimeError("pre-AI routing regression test did not land")
+    if "test_legacy_fixed_source_search_synthesis_is_not_used_for_dispatch" not in runtime_source:
+        raise RuntimeError("legacy search synthesis regression test did not land")
     print("Applied strict standalone AI tool-call protocol and boundary tests.")
     return 0
 
