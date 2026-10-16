@@ -220,12 +220,64 @@ jobs:
           test -d "$GITHUB_WORKSPACE/buildsrc"
           cd "$GITHUB_WORKSPACE/buildsrc"
           test -z "$(find . -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print -quit)"
+          rm -f "$GITHUB_WORKSPACE/DongBaKe-source-38.zip"
           zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" . \
             -x './app/build/*' './app/.cxx/*' './app/src/main/jniLibs/*' './build/*' \
                './.gradle/*' './.kotlin/*' './**/__pycache__/*' './**/*.pyc'
           unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-38.zip"
           unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" app/build.gradle.kts | grep -q 'versionCode = 38'
           unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt | grep -q 'MAX_TOOL_CALLS_PER_TURN = 3'
+          unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt | grep -q 'extractExplicitToolCallBlock(raw: String)'
+          if unzip -Z1 "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" | grep -Eq '(^|/)ToolDecisionEngine\.kt          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" | tee -a "$GITHUB_WORKSPACE/source-38-input-sha256.txt"
+
+      - name: Upload APKs, source archive and validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-38-v0.12.4-ai-tool-dispatch-run-${{ github.run_number }}
+          path: |
+            buildsrc/app/build/outputs/apk/**
+            buildsrc/app/build/reports/**
+            buildsrc/app/build/outputs/logs/**
+            buildsrc/app/src/main/jniLibs/arm64-v8a/*.so
+            buildsrc/app/src/main/jniLibs/x86_64/*.so
+            buildsrc/build/source-38-validation/**
+            DongBaKe-source-38.zip
+            source-38-input-sha256.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish source-38 archive to this work branch after all checks pass
+        if: success() && github.event_name == 'push' && github.ref_name == 'work/source-37-context-logging'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Keep this run's verified archive outside the checkout while refreshing
+          # the branch base. This avoids binary ZIP conflicts when another run
+          # published a source archive while the native build was compiling.
+          ARCHIVE_COPY="$RUNNER_TEMP/DongBaKe-source-38-to-publish.zip"
+          cp "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" "$ARCHIVE_COPY"
+          git restore --source=HEAD --worktree -- DongBaKe-source-38.zip
+          for attempt in 1 2 3; do
+            git fetch --no-tags origin "${GITHUB_REF_NAME}"
+            git checkout --detach "origin/${GITHUB_REF_NAME}"
+            cp "$ARCHIVE_COPY" "$GITHUB_WORKSPACE/DongBaKe-source-38.zip"
+            git add DongBaKe-source-38.zip
+            if git diff --cached --quiet; then
+              echo 'The current branch already contains this exact source archive.'
+              exit 0
+            fi
+            git commit -m "Add DongBaKe source-38 AI tool dispatch source archive (run ${GITHUB_RUN_NUMBER})"
+            if git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
+              echo 'Verified source-38 archive published to the working branch.'
+              exit 0
+            fi
+            echo "::warning::Concurrent branch update during archive publication; refreshing and retrying (attempt $attempt/3)."
+          done
+          echo "::warning::APK and source archive are available in this run's artifact, but the optional branch-copy publication could not be completed after three attempts."
+          exit 0 ; then echo "Removed pre-AI router remains in source archive" >&2; exit 6; fi
           sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" | tee -a "$GITHUB_WORKSPACE/source-38-input-sha256.txt"
 
       - name: Upload APKs, source archive and validation logs
