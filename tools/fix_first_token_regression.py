@@ -22,7 +22,7 @@ PROMPT_TEST = r'''    @Test fun toolPromptIsCompactAndKeepsToolAuthorityWithMode
         assertTrue(enabled.contains("weather("))
         assertTrue(enabled.contains("location({})"))
         assertTrue(enabled.contains("calculator、computer、manual_calculator 禁止 AI 调用"))
-        assertTrue(enabled.length <= 700, "Tool instructions must stay compact: " + "$" + "{enabled.length} chars")
+        assertTrue("Tool instructions must stay compact: " + "$" + "{enabled.length} chars", enabled.length <= 700)
         val disabled = AiToolRegistry.prompt(false)
         assertTrue(disabled.contains("联网搜索（当前已关闭，禁止调用）"))
         assertTrue(disabled.length <= 700)
