@@ -48,6 +48,19 @@ jobs:
           gzip -dc "$RUNNER_TEMP/source37.patch.gz" > "$RUNNER_TEMP/source37.patch"
           patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
+          # Android Spinner exposes setPopupBackgroundDrawable(); popupBackground is read-only in Kotlin.
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt")
+          text = source.read_text()
+          broken = "popupBackground = rounded(C_PANEL, 16, C_STROKE)"
+          fixed = "setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))"
+          count = text.count(broken)
+          if count != 6:
+              raise SystemExit(f"Expected 6 Spinner popupBackground assignments, found {count}; refusing an unsafe broad edit")
+          source.write_text(text.replace(broken, fixed))
+          print(f"Fixed {count} read-only Spinner popupBackground assignments.")
+          PY
           patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
           test "$(grep -c 'setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt)" -eq 6
