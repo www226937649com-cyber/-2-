@@ -37,16 +37,6 @@
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(draftLabels)
 
-@@ -3624,6 +3624,8 @@
-                     val systemPrompt = InferencePromptPolicy.systemPrompt(
-                         responseModeIndex,
-                         simpleQuestion,
-                         webResearch,
--                        loadedModelProfile?.supportsReasoningTemplate == true
-+                        loadedModelProfile?.supportsReasoningTemplate == true,
-+                        aiDisplayName(),
-+                        generationBudget.softThinkingTokens
-                     )
 --- a/README.md
 +++ b/README.md
 @@ -3,1 +3,1 @@
