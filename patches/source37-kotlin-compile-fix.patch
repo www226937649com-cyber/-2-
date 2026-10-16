@@ -107,3 +107,103 @@
 +        assertTrue(longNamePrompt.length <= 100)
 +    }
  }
+
+--- a/app/src/main/java/com/aiguanjia/app/InferenceBudgetPolicy.kt
++++ b/app/src/main/java/com/aiguanjia/app/InferenceBudgetPolicy.kt
+@@ -80,1 +80,1 @@
+-        if (reachedTokenLimit(metrics, requestedTokens)) return "token_cap"
++        if (reachedTokenLimit(metrics, requestedTokens)) return "soft_budget"
+@@ -92,5 +92,38 @@
+         return null
+     }
++    /** Classifies the final native generation outcome using explicit evidence only. */
++    fun finalTerminationReason(
++        output: String,
++        metrics: String,
++        requestedTokens: Int,
++        continuationStillCapped: Boolean,
++        nativeLogTail: String,
++        timedOut: Boolean = false
++    ): String {
++        if (timedOut) return "timeout"
++        if (Regex("(?:^|[;\\s])cancelled=true(?:[;\\s]|$)").containsMatchIn(metrics)) return "user_stop"
++        val native = nativeLogTail.lowercase()
++        val contextLimitEvidence = listOf(
++            "n_past + n_tokens > n_ctx",
++            "context limit reached",
++            "context is full",
++            "context overflow",
++            "input exceeds context",
++            "prompt exceeds context"
++        ).any { it in native }
++        if (contextLimitEvidence) return "context_limit"
++        val engineError = output.isBlank() ||
++            output.startsWith("无法创建本地推理上下文") ||
++            output.startsWith("无法初始化 Token 采样器") ||
++            output.startsWith("模型预填充失败") ||
++            output.startsWith("无法分配 Token 采样器") ||
++            native.contains("native inference exception") ||
++            native.contains("prompt_prefill_batch_failed") ||
++            Regex("decode stopped with result=-?\\d+").containsMatchIn(native)
++        if (engineError) return "engine_error"
++        if (continuationStillCapped || reachedTokenLimit(metrics, requestedTokens)) return "hard_limit"
++        return "natural_stop"
++    }
+ 
+     /** True only when native metrics show that generation exhausted its requested token cap. */
+     fun reachedTokenLimit(metrics: String, requestedTokens: Int): Boolean {
+
+--- a/app/src/test/java/com/aiguanjia/app/InferenceBudgetPolicyTest.kt
++++ b/app/src/test/java/com/aiguanjia/app/InferenceBudgetPolicyTest.kt
+@@ -60,3 +60,3 @@
+-        assertEquals("token_cap", InferenceBudgetPolicy.continuationReason(
++        assertEquals("soft_budget", InferenceBudgetPolicy.continuationReason(
+             "A short but capped answer", "promptTokens=600; generatedTokens=768; cancelled=false", 768
+         ))
+@@ -85,3 +85,21 @@
+     }
+ 
+ @Test fun finalTerminationReasonsAreExplicitAndEvidenceBased() {
++        assertEquals("natural_stop", InferenceBudgetPolicy.finalTerminationReason(
++            "42", "promptTokens=8; generatedTokens=12; cancelled=false", 64, false, "sampler_emitted_end_of_generation"
++        ))
++        assertEquals("user_stop", InferenceBudgetPolicy.finalTerminationReason(
++            "partial", "generatedTokens=3; cancelled=true", 64, false, ""
++        ))
++        assertEquals("hard_limit", InferenceBudgetPolicy.finalTerminationReason(
++            "partial", "generatedTokens=64; cancelled=false", 64, true, ""
++        ))
++        assertEquals("timeout", InferenceBudgetPolicy.finalTerminationReason("", "", 64, false, "", timedOut = true))
++        assertEquals("context_limit", InferenceBudgetPolicy.finalTerminationReason(
++            "partial", "generatedTokens=2; cancelled=false", 64, false, "context limit reached"
++        ))
++        assertEquals("engine_error", InferenceBudgetPolicy.finalTerminationReason(
++            "", "generatedTokens=0; cancelled=false", 64, false, "prompt_prefill_batch_failed result=-1"
++        ))
++    }
+ }
+
+--- a/app/src/main/java/com/aiguanjia/app/MainActivity.kt
++++ b/app/src/main/java/com/aiguanjia/app/MainActivity.kt
+@@ -3790,5 +3792,6 @@
+                     } catch (e: Exception) {
+-                        AppDiagnostics.logThrowable(this@MainActivity, "ERROR", "native_inference_exception", "model=${loadedModelFileName ?: "unknown"}; context=${configuredContextSize()}; ${AppDiagnostics.memorySnapshot(this@MainActivity)}; nativeLog=${NativeLlamaEngine.lastNativeLogTail().takeLast(6000)}", e)
+-                        AppDiagnostics.finishOperation(this@MainActivity, "model_inference", "failed", "${e.javaClass.simpleName}: ${e.message.orEmpty()}")
++                        val exceptionTerminationReason = if (e.javaClass.simpleName.contains("Timeout", ignoreCase = true) || e.message.orEmpty().contains("timeout", ignoreCase = true)) "timeout" else if (e is java.util.concurrent.CancellationException) "user_stop" else "engine_error"
++                        AppDiagnostics.logThrowable(this@MainActivity, if (exceptionTerminationReason == "engine_error") "ERROR" else "WARN", if (exceptionTerminationReason == "engine_error") "native_inference_exception" else "native_inference_interrupted", "terminationReason=$exceptionTerminationReason; model=${loadedModelFileName ?: "unknown"}; context=${configuredContextSize()}; ${AppDiagnostics.memorySnapshot(this@MainActivity)}; nativeLog=${NativeLlamaEngine.lastNativeLogTail().takeLast(6000)}", e)
++                        AppDiagnostics.finishOperation(this@MainActivity, "model_inference", if (exceptionTerminationReason == "user_stop") "cancelled" else "failed", "terminationReason=$exceptionTerminationReason; ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
+                         finishTrackedTask("本地模型回答", false, "原生推理失败或已中断：${e.message ?: e.javaClass.simpleName}")
+                         throw e
+@@ -3798,2 +3801,11 @@
+                     val nativeMetrics = NativeLlamaEngine.lastInferenceMetrics(loadedHandle)
++                    val finalTerminationReason = InferenceBudgetPolicy.finalTerminationReason(
++                        raw, nativeMetrics, if (continuationTriggered) hardTokenLimit else tokenLimit,
++                        continuationStillCapped, NativeLlamaEngine.lastNativeLogTail()
++                    )
++                    AppDiagnostics.log(
++                        this@MainActivity,
++                        if (finalTerminationReason in setOf("engine_error", "context_limit", "timeout")) "ERROR" else if (finalTerminationReason in setOf("hard_limit", "user_stop")) "WARN" else "INFO",
++                        "inference_termination",
++                        "finalTerminationReason=$finalTerminationReason; continuationTriggerReason=$continuationReasonUsed; continuationTriggered=$continuationTriggered; continuationStillCapped=$continuationStillCapped; configuredContext=${configuredContextSize()}; loadedNativeContext=${loadedModelContextSize ?: "none"}; effectiveContext=$effectiveContextSize; promptContextTrimmedByApp=${actualPrompt.length < promptWithPersonalContext.length}"
++                    )
+                     val visibleThinkChars = Regex("(?is)<think>(.*?)</think>").findAll(raw).sumOf { it.groupValues[1].length }
