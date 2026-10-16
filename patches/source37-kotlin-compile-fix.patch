@@ -160,9 +160,7 @@
 +        assertEquals("soft_budget", InferenceBudgetPolicy.continuationReason(
              "A short but capped answer", "promptTokens=600; generatedTokens=768; cancelled=false", 768
          ))
-@@ -85,3 +85,21 @@
-     }
- 
+@@ -87,1 +87,19 @@
 +    @Test fun finalTerminationReasonsAreExplicitAndEvidenceBased() {
 +        assertEquals("natural_stop", InferenceBudgetPolicy.finalTerminationReason(
 +            "42", "promptTokens=8; generatedTokens=12; cancelled=false", 64, false, "sampler_emitted_end_of_generation"
@@ -181,7 +179,7 @@
 +            "", "generatedTokens=0; cancelled=false", 64, false, "prompt_prefill_batch_failed result=-1"
 +        ))
 +    }
- }
+ }}
 
 --- a/app/src/main/java/com/aiguanjia/app/MainActivity.kt
 +++ b/app/src/main/java/com/aiguanjia/app/MainActivity.kt
