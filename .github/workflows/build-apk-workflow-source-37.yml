@@ -228,54 +228,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd "$GITHUB_WORKSPACE/buildsrc"
-          find . -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print -delete
-          remaining_backups="$(find . -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
-          if [ -n "$remaining_backups" ]; then
-            echo "Temporary backup/reject files remain in source tree"
-            exit 5
-          fi
-          zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" . -x './app/build/*' './app/.cxx/*' './app/src/main/jniLibs/*' './build/*' './.gradle/*' './.kotlin/*' './**/__pycache__/*' './**/*.pyc'
+          find . -type f -name '*.orig' -delete
+          find . -type f -name '*.rej' -delete
+          find . -type f -name '*.bak' -delete
+          test -z "$(find . -type f -name '*.orig' -print -quit)"
+          test -z "$(find . -type f -name '*.rej' -print -quit)"
+          test -z "$(find . -type f -name '*.bak' -print -quit)"
+          zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" . -x './app/build/*' './app/.cxx/*' './app/src/main/jniLibs/*' './build/*' './.gradle/*' './.kotlin/*' './**/__pycache__/*' './**/*.pyc' '*.orig' '*.rej' '*.bak'
           unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-37.zip"
-          unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" app/src/main/java/com/aiguanjia/app/MainActivity.kt > "$RUNNER_TEMP/archived-MainActivity.kt"
-          grep -q 'aiDisplayName()' "$RUNNER_TEMP/archived-MainActivity.kt"
-          grep -q 'generationBudget.softThinkingTokens' "$RUNNER_TEMP/archived-MainActivity.kt"
-          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" | tee -a "$GITHUB_WORKSPACE/source-37-input-sha256.txt"
-      - name: Upload APKs, source and validation logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: DongBaKe-source-37-v0.12.3-context-logging-run-${{ github.run_number }}
-          path: |
-            buildsrc/app/build/outputs/apk/**
-            buildsrc/app/build/reports/**
-            buildsrc/app/src/main/jniLibs/arm64-v8a/*.so
-            buildsrc/app/src/main/jniLibs/x86_64/*.so
-            buildsrc/build/source-37-validation/*.log
-            buildsrc/build/source-37-validation/*.txt
-            DongBaKe-source-37.zip
-            source-37-input-sha256.txt
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Publish source-37 archive to repair branch
-        if: success() && github.event_name == 'push' && github.ref_name == 'work/source-37-context-logging'
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+actions@users.noreply.github.com"
-          git add DongBaKe-source-37.zip
-          if ! git diff --cached --quiet; then
-            git commit -m "Add DongBaKe source-37 thinking-budget source archive"
-          fi
-          # The branch may advance after this run starts; rebase the archive commit before publishing.
-          git fetch origin "${GITHUB_REF_NAME}"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
- >/dev/null; then
-            echo "Temporary backup/reject files found in source archive"
-            exit 5
-          fi
           unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" app/src/main/java/com/aiguanjia/app/MainActivity.kt > "$RUNNER_TEMP/archived-MainActivity.kt"
           grep -q 'aiDisplayName()' "$RUNNER_TEMP/archived-MainActivity.kt"
           grep -q 'generationBudget.softThinkingTokens' "$RUNNER_TEMP/archived-MainActivity.kt"
