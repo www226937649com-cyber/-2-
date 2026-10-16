@@ -69,7 +69,6 @@ jobs:
               raise SystemExit("source-37 prompt call-site must pass custom AI name and selected-mode soft thinking tokens")
           print("source-37 prompt call-site budget/name integration: OK")
           PY
-          PY
           grep -q 'aiDisplayName()' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt
           test "$(grep -c 'setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt)" -eq 6
           ! grep -q 'popupBackground = rounded(C_PANEL, 16, C_STROKE)' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt
