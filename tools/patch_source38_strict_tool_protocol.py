@@ -201,7 +201,7 @@ def main() -> int:
         method_start = main_source.find("    private fun parseModelReply(raw: String): ModelReply {")
         if method_start < 0:
             raise RuntimeError("parseModelReply method start not found in MainActivity.kt")
-        next_method = main_source.find("\\n    private fun ", method_start + 1)
+        next_method = main_source.find("\n    private fun ", method_start + 1)
         if next_method < 0:
             raise RuntimeError("parseModelReply next method boundary not found in MainActivity.kt")
         current_method = main_source[method_start:next_method]
