@@ -8,6 +8,7 @@ on:
     paths:
       - 'DongBaKe-source-37.zip'
       - 'patches/source38-bundle-parts/**'
+      - 'tools/patch_source38_*.py'
       - '.github/workflows/build-apk-workflow-source-38.yml'
 
 permissions:
@@ -52,6 +53,7 @@ jobs:
           python3 tools/patch_source38_casual_classifier.py "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
           cp "$RUNNER_TEMP/source38-bundle/java/AiToolRegistry.kt" buildsrc/app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt
           cp "$RUNNER_TEMP/source38-bundle/java/AiToolRegistryTest.kt" buildsrc/app/src/test/java/com/aiguanjia/app/AiToolRegistryTest.kt
+          python3 tools/patch_source38_strict_tool_protocol.py "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt" "$GITHUB_WORKSPACE/buildsrc/app/src/test/java/com/aiguanjia/app/AiToolRegistryTest.kt"
           cp "$RUNNER_TEMP/source38-bundle"/tests/*.py buildsrc/tests/
           grep -q 'applicationId = "com.aiguanjia.app"' buildsrc/app/build.gradle.kts
           grep -q 'versionCode = 38' buildsrc/app/build.gradle.kts
