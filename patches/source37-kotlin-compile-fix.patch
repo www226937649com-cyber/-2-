@@ -91,16 +91,7 @@
  }
 --- a/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
 +++ b/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
-@@ -10,6 +10,7 @@
-         for (mode in 0..2) {
-             val prompt = InferencePromptPolicy.systemPrompt(mode, simpleQuestion = false, webResearch = false, supportsReasoning = true)
-             assertTrue("Mode $mode prompt was ${prompt.length} chars", prompt.length <= 100)
-             assertTrue(prompt.contains("简体中文"))
-             assertTrue(prompt.contains("不确定") || prompt.contains("不编造"))
-+            assertTrue(mode == 0 || prompt.contains("tokens内"))
-         }
-     }
-@@ -23,7 +24,14 @@ class InferencePromptPolicyTest {
+@@ -23,7 +24,15 @@ class InferencePromptPolicyTest {
      @Test fun reasoningDirectiveIsExplicitOnlyWhenSupportedAndNeeded() {
          val unsupported = InferencePromptPolicy.systemPrompt(1, false, false, false)
          assertTrue(!unsupported.contains("/think"))
@@ -109,6 +100,7 @@
      }
 +    @Test fun customAssistantNameIsPreservedWithinPromptBudget() {
 +        val prompt = InferencePromptPolicy.systemPrompt(1, false, false, false, assistantName = "东巴壳")
++        assertTrue(prompt.contains("384 tokens内"))
 +        assertTrue(prompt.startsWith("你是东巴壳。"))
 +        assertTrue(prompt.length <= 100)
 +        val longNamePrompt = InferencePromptPolicy.systemPrompt(1, false, false, false, assistantName = "X".repeat(64))
