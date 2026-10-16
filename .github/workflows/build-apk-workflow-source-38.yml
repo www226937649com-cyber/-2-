@@ -205,5 +205,10 @@ jobs:
             echo 'Source archive is already up to date; nothing to commit.'
           else
             git commit -m "Add DongBaKe source-38 AI tool dispatch source archive"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
+            # The branch may advance while a long native build is running.
+            # Rebase this archive-only commit on the latest remote branch to avoid
+            # rejecting the build just because a concurrent commit landed.
+            git fetch --no-tags origin "${GITHUB_REF_NAME}"
+            git rebase "origin/${GITHUB_REF_NAME}"
+            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
           fi
