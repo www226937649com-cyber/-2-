@@ -257,6 +257,7 @@ jobs:
           # published a source archive while the native build was compiling.
           ARCHIVE_COPY="$RUNNER_TEMP/DongBaKe-source-38-to-publish.zip"
           cp "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" "$ARCHIVE_COPY"
+          git restore --source=HEAD --worktree -- DongBaKe-source-38.zip
           for attempt in 1 2 3; do
             git fetch --no-tags origin "${GITHUB_REF_NAME}"
             git checkout --detach "origin/${GITHUB_REF_NAME}"
