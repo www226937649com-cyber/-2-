@@ -28,6 +28,7 @@ jobs:
           base64 --decode /tmp/source37.patch.b64 > /tmp/source37.patch.gz
           gzip -t /tmp/source37.patch.gz
           echo "a4af3291439a2044c4a13442785f88ee0a2cb50ac22997cc3ead5bdcb0e3ed14  /tmp/source37.patch.gz" | sha256sum -c -
+          cp /tmp/source37.patch.gz source37.patch.gz
           gzip -dc /tmp/source37.patch.gz > source37.patch
           unzip -t DongBaKe-source-36.zip
           mkdir buildsrc
