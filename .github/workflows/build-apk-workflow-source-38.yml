@@ -252,15 +252,26 @@ jobs:
           set -Eeuo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add DongBaKe-source-38.zip
-          if git diff --cached --quiet; then
-            echo 'Source archive is already up to date; nothing to commit.'
-          else
-            git commit -m "Add DongBaKe source-38 AI tool dispatch source archive"
-            # The branch may advance while a long native build is running.
-            # Rebase this archive-only commit on the latest remote branch to avoid
-            # rejecting the build just because a concurrent commit landed.
+          # Keep this run's verified archive outside the checkout while refreshing
+          # the branch base. This avoids binary ZIP conflicts when another run
+          # published a source archive while the native build was compiling.
+          ARCHIVE_COPY="$RUNNER_TEMP/DongBaKe-source-38-to-publish.zip"
+          cp "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" "$ARCHIVE_COPY"
+          for attempt in 1 2 3; do
             git fetch --no-tags origin "${GITHUB_REF_NAME}"
-            git rebase "origin/${GITHUB_REF_NAME}"
-            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
-          fi
+            git checkout --detach "origin/${GITHUB_REF_NAME}"
+            cp "$ARCHIVE_COPY" "$GITHUB_WORKSPACE/DongBaKe-source-38.zip"
+            git add DongBaKe-source-38.zip
+            if git diff --cached --quiet; then
+              echo 'The current branch already contains this exact source archive.'
+              exit 0
+            fi
+            git commit -m "Add DongBaKe source-38 AI tool dispatch source archive (run ${GITHUB_RUN_NUMBER})"
+            if git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
+              echo 'Verified source-38 archive published to the working branch.'
+              exit 0
+            fi
+            echo "::warning::Concurrent branch update during archive publication; refreshing and retrying (attempt $attempt/3)."
+          done
+          echo "::warning::APK and source archive are available in this run's artifact, but the optional branch-copy publication could not be completed after three attempts."
+          exit 0
