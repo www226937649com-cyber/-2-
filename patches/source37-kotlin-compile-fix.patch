@@ -36,3 +36,70 @@
 -            popupBackground = rounded(C_PANEL, 16, C_STROKE)
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(draftLabels)
+
+@@ -3624,6 +3624,7 @@
+                     val systemPrompt = InferencePromptPolicy.systemPrompt(
+                         responseModeIndex,
+                         simpleQuestion,
+                         webResearch,
+-                        loadedModelProfile?.supportsReasoningTemplate == true
++                        loadedModelProfile?.supportsReasoningTemplate == true,
++                        aiDisplayName()
+                     )
+--- a/README.md
++++ b/README.md
+@@ -3,1 +3,1 @@
+-- 当前修复分支版本：`0.12.3-context-logging`，`versionCode=36`；包名保持 `com.aiguanjia.app`。
++- 当前修复分支版本：`0.12.3-context-logging`，`versionCode=37`；包名保持 `com.aiguanjia.app`。
+--- a/app/src/main/java/com/aiguanjia/app/InferencePromptPolicy.kt
++++ b/app/src/main/java/com/aiguanjia/app/InferencePromptPolicy.kt
+@@ -1,24 +1,25 @@
+ package com.aiguanjia.app
+ 
+ /** Compact, model-agnostic control prompts. Persona memories and retrieved material belong in the user prompt. */
+ internal object InferencePromptPolicy {
+-    fun systemPrompt(modeIndex: Int, simpleQuestion: Boolean, webResearch: Boolean, supportsReasoning: Boolean): String {
++    fun systemPrompt(modeIndex: Int, simpleQuestion: Boolean, webResearch: Boolean, supportsReasoning: Boolean, assistantName: String = "中文伙伴"): String {
++        val safeAssistantName = assistantName.filterNot { it.isISOControl() }.trim().take(16).ifBlank { "中文伙伴" }
+         val mode = modeIndex.coerceIn(0, 2)
+         val base = when {
+             mode == 0 || (mode == 2 && simpleQuestion) ->
+-                "你是用户的中文伙伴。用简体中文准确简洁地回答；简单问题直接答，不展示推理；不确定就说明，不编造。"
++                "你是$safeAssistantName。用简体中文准确简洁地回答；简单问题直接答，不展示推理；不确定就说明，不编造。"
+             mode == 1 ->
+-                "你是用户的中文伙伴。简体中文作答，先结论后必要理由；有结论立即回答，不反复验证；不确定就说明。"
++                "你是$safeAssistantName。简体中文作答，先结论后必要理由；有结论立即回答，不反复验证；不确定就说明。"
+             else ->
+-                "你是用户的中文伙伴。简体中文作答，复杂问题深入分析；结论明确就立即回答，不反复验证，不编造。"
++                "你是$safeAssistantName。简体中文作答，复杂问题深入分析；结论明确就立即回答，不反复验证，不编造。"
+         }
+         // Do not inject model-specific control tokens into templates that do not advertise support.
+         val control = if (!supportsReasoning) "" else when {
+             mode == 0 || (mode == 2 && simpleQuestion) -> "\n/no_think"
+             else -> "\n/think"
+         }
+-        // Research-specific instructions live next to the retrieved source material in the user prompt.
+-        // Keep this prompt short on purpose; old personality/preferences remain in the existing profile store.
+-        return (if (webResearch) base.replace("先结论后必要理由", "先回答原问题，再给必要来源") else base) + control
++        val researchPrefix = if (webResearch) "先直接回答原问题，再给必要来源；" else ""
++        // Keep this prompt short on purpose; old personality/preferences remain in the existing profile store.
++        return researchPrefix + base + control
+     }
+ }
+--- a/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
++++ b/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
+@@ -23,7 +23,14 @@ class InferencePromptPolicyTest {
+     @Test fun reasoningDirectiveIsExplicitOnlyWhenSupportedAndNeeded() {
+         val unsupported = InferencePromptPolicy.systemPrompt(1, false, false, false)
+         assertTrue(!unsupported.contains("/think"))
+         assertTrue(InferencePromptPolicy.systemPrompt(1, false, false, true).endsWith("/think"))
+         assertTrue(InferencePromptPolicy.systemPrompt(2, false, true, true).contains("直接回答原问题"))
+     }
++    @Test fun customAssistantNameIsPreservedWithinPromptBudget() {
++        val prompt = InferencePromptPolicy.systemPrompt(1, false, false, false, assistantName = "东巴壳")
++        assertTrue(prompt.startsWith("你是东巴壳。"))
++        assertTrue(prompt.length <= 100)
++        val longNamePrompt = InferencePromptPolicy.systemPrompt(1, false, false, false, assistantName = "X".repeat(64))
++        assertTrue(longNamePrompt.length <= 100)
++    }
+ }
