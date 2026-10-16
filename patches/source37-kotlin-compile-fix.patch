@@ -192,7 +192,7 @@
 +                        AppDiagnostics.finishOperation(this@MainActivity, "model_inference", if (exceptionTerminationReason == "user_stop") "cancelled" else "failed", "terminationReason=$exceptionTerminationReason; ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
                          finishTrackedTask("本地模型回答", false, "原生推理失败或已中断：${e.message ?: e.javaClass.simpleName}")
                          throw e
-@@ -3798,2 +3801,11 @@
+@@ -3798,2 +3801,12 @@
                      val nativeMetrics = NativeLlamaEngine.lastInferenceMetrics(loadedHandle)
 +                    val finalTerminationReason = InferenceBudgetPolicy.finalTerminationReason(
 +                        raw, nativeMetrics, if (continuationTriggered) hardTokenLimit else tokenLimit,
