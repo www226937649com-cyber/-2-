@@ -9,6 +9,7 @@ on:
       - 'DongBaKe-source-37.zip'
       - 'patches/source38-bundle-parts/**'
       - 'tools/patch_source38_*.py'
+      - 'tools/fix_first_token_regression.py'
       - '.github/workflows/build-apk-workflow-source-38.yml'
 
 permissions:
@@ -55,9 +56,10 @@ jobs:
           cp "$RUNNER_TEMP/source38-bundle/java/AiToolRegistryTest.kt" buildsrc/app/src/test/java/com/aiguanjia/app/AiToolRegistryTest.kt
           cp "$RUNNER_TEMP/source38-bundle"/tests/*.py buildsrc/tests/
           python3 tools/patch_source38_strict_tool_protocol.py "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt" "$GITHUB_WORKSPACE/buildsrc/app/src/test/java/com/aiguanjia/app/AiToolRegistryTest.kt" "$GITHUB_WORKSPACE/buildsrc/tests/test_progress_audit.py" "$GITHUB_WORKSPACE/buildsrc/tests/test_runtime_observability.py" "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+          python3 tools/fix_first_token_regression.py "$GITHUB_WORKSPACE/buildsrc/app/build.gradle.kts" "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt" "$GITHUB_WORKSPACE/buildsrc/app/src/test/java/com/aiguanjia/app/AiToolRegistryTest.kt" "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt" "$GITHUB_WORKSPACE/buildsrc/tests" "$GITHUB_WORKSPACE/buildsrc/README.md"
           grep -q 'applicationId = "com.aiguanjia.app"' buildsrc/app/build.gradle.kts
-          grep -q 'versionCode = 38' buildsrc/app/build.gradle.kts
-          grep -q 'versionName = "0.12.4-ai-tool-dispatch"' buildsrc/app/build.gradle.kts
+          grep -q 'versionCode = 39' buildsrc/app/build.gradle.kts
+          grep -q 'versionName = "0.12.5-ai-tool-dispatch"' buildsrc/app/build.gradle.kts
           grep -q 'MAX_TOOL_CALLS_PER_TURN = 3' buildsrc/app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt
           grep -q 'runModelWithTools' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt
           if grep -Eq 'routeForQuestion\(|ToolDecisionEngine|runSearchAndAnswer\(|runCalculatorAnswer\(|evaluateSimpleArithmetic\(' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt; then
@@ -65,7 +67,7 @@ jobs:
             exit 5
           fi
           sha256sum DongBaKe-source-37.zip "$RUNNER_TEMP/source38-bundle.tar.gz.xz" | tee source-38-input-sha256.txt
-          echo 'Verified applicationId=com.aiguanjia.app versionCode=38 versionName=0.12.4-ai-tool-dispatch'
+          echo 'Verified applicationId=com.aiguanjia.app versionCode=39 versionName=0.12.5-ai-tool-dispatch'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -148,7 +150,7 @@ jobs:
           test -f "$DEBUG_APK"
           test -f "$RELEASE_APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$DEBUG_APK" | tee build/source-38-validation/debug-apk-badging.txt
-          grep -q "package: name='com.aiguanjia.app' versionCode='38' versionName='0.12.4-ai-tool-dispatch'" build/source-38-validation/debug-apk-badging.txt
+          grep -q "package: name='com.aiguanjia.app' versionCode='39' versionName='0.12.5-ai-tool-dispatch'" build/source-38-validation/debug-apk-badging.txt
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$DEBUG_APK" 2>&1 | tee build/source-38-validation/debug-apk-signature-check.txt
           {
             echo "repository=$GITHUB_REPOSITORY"
@@ -156,8 +158,8 @@ jobs:
             echo "run_number=$GITHUB_RUN_NUMBER"
             echo "source_commit=$GITHUB_SHA"
             echo "applicationId=com.aiguanjia.app"
-            echo "versionCode=38"
-            echo "versionName=0.12.4-ai-tool-dispatch"
+            echo "versionCode=39"
+            echo "versionName=0.12.5-ai-tool-dispatch"
             echo "device_execution=not_yet_verified"
             sha256sum "$DEBUG_APK" "$RELEASE_APK"
           } > build/source-38-validation/build-provenance.txt
@@ -168,7 +170,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p app/build/outputs/apk/primary app/build/outputs/apk/side-by-side
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/primary/DongBaKe-v0.12.4-ai-tool-dispatch-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/primary/DongBaKe-v0.12.5-ai-tool-dispatch-debug.apk
           cp app/build.gradle.kts "$RUNNER_TEMP/source38-app-build.gradle.kts"
           cp app/src/main/AndroidManifest.xml "$RUNNER_TEMP/source38-AndroidManifest.xml"
           restore_build_files() {
@@ -197,17 +199,17 @@ jobs:
           SIDE_APK="app/build/outputs/apk/debug/app-debug.apk"
           test -f "$SIDE_APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$SIDE_APK" | tee build/source-38-validation/side-by-side-apk-badging.txt
-          grep -q "package: name='com.aiguanjia.app.tooltest38' versionCode='38' versionName='0.12.4-ai-tool-dispatch'" build/source-38-validation/side-by-side-apk-badging.txt
+          grep -q "package: name='com.aiguanjia.app.tooltest38' versionCode='39' versionName='0.12.5-ai-tool-dispatch'" build/source-38-validation/side-by-side-apk-badging.txt
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$SIDE_APK" 2>&1 | tee build/source-38-validation/side-by-side-apk-signature-check.txt
-          cp "$SIDE_APK" app/build/outputs/apk/side-by-side/DongBaKe-v0.12.4-ai-tool-dispatch-side-by-side.apk
+          cp "$SIDE_APK" app/build/outputs/apk/side-by-side/DongBaKe-v0.12.5-ai-tool-dispatch-side-by-side.apk
           {
             echo "applicationId=com.aiguanjia.app.tooltest38"
-            echo "versionCode=38"
-            echo "versionName=0.12.4-ai-tool-dispatch"
+            echo "versionCode=39"
+            echo "versionName=0.12.5-ai-tool-dispatch"
             echo "label=东巴壳（AI工具调度测试）"
             echo "installMode=side-by-side; does not replace com.aiguanjia.app"
             echo "dataIsolation=separate app data; existing chat history is not copied"
-            sha256sum app/build/outputs/apk/side-by-side/DongBaKe-v0.12.4-ai-tool-dispatch-side-by-side.apk
+            sha256sum app/build/outputs/apk/side-by-side/DongBaKe-v0.12.5-ai-tool-dispatch-side-by-side.apk
           } > build/source-38-validation/side-by-side-proof.txt
           restore_build_files
           trap - EXIT
@@ -225,7 +227,7 @@ jobs:
             -x './app/build/*' './app/.cxx/*' './app/src/main/jniLibs/*' './build/*' \
                './.gradle/*' './.kotlin/*' './**/__pycache__/*' './**/*.pyc'
           unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-38.zip"
-          unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" app/build.gradle.kts | grep -q 'versionCode = 38'
+          unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" app/build.gradle.kts | grep -q 'versionCode = 39'
           unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt | grep -q 'MAX_TOOL_CALLS_PER_TURN = 3'
           unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt | grep -q 'extractExplicitToolCallBlock(raw: String)'
           if unzip -Z1 "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" | grep -Eq '(^|/)ToolDecisionEngine\.kt          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-38.zip" | tee -a "$GITHUB_WORKSPACE/source-38-input-sha256.txt"
@@ -234,7 +236,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: DongBaKe-source-38-v0.12.4-ai-tool-dispatch-run-${{ github.run_number }}
+          name: DongBaKe-source-38-v0.12.5-ai-tool-dispatch-run-${{ github.run_number }}
           path: |
             buildsrc/app/build/outputs/apk/**
             buildsrc/app/build/reports/**
@@ -284,7 +286,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: DongBaKe-source-38-v0.12.4-ai-tool-dispatch-run-${{ github.run_number }}
+          name: DongBaKe-source-38-v0.12.5-ai-tool-dispatch-run-${{ github.run_number }}
           path: |
             buildsrc/app/build/outputs/apk/**
             buildsrc/app/build/reports/**
