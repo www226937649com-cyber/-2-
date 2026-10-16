@@ -9,12 +9,6 @@ on:
       - 'DongBaKe-source-36.zip'
       - 'patches/source37-parts/**'
       - '.github/workflows/build-apk-workflow-source-37.yml'
-  push:
-    branches:
-      - work/source-37-context-logging
-    paths:
-      - 'patches/source37-parts/**'
-      - '.github/workflows/build-apk-workflow-source-37.yml'
 
 permissions:
   contents: write
