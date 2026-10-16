@@ -9,6 +9,7 @@ on:
       - 'DongBaKe-source-36.zip'
       - 'patches/source37-parts/**'
       - 'patches/source37-kotlin-compile-fix.patch'
+      - 'patches/source37-callsite-budget-fix.patch'
       - '.github/workflows/build-apk-workflow-source-37.yml'
 
 permissions:
@@ -51,6 +52,20 @@ jobs:
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
           patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
+          patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-callsite-budget-fix.patch
+          patch --batch --forward --fuzz=0 -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-callsite-budget-fix.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source = Path("buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt").read_text()
+          match = re.search(r"val systemPrompt = InferencePromptPolicy\\.systemPrompt\\(([\\s\\S]*?)\\n\\s*\\)", source)
+          if not match:
+              raise SystemExit("source-37 prompt-policy call not found")
+          args = match.group(1)
+          if "aiDisplayName()" not in args or "generationBudget.softThinkingTokens" not in args:
+              raise SystemExit("source-37 prompt call-site must pass custom AI name and selected-mode soft thinking tokens")
+          print("source-37 prompt call-site budget/name integration: OK")
+          PY
           grep -q 'aiDisplayName()' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt
           test "$(grep -c 'setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt)" -eq 6
           ! grep -q 'popupBackground = rounded(C_PANEL, 16, C_STROKE)' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt
