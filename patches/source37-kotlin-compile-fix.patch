@@ -91,7 +91,7 @@
  }
 --- a/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
 +++ b/app/src/test/java/com/aiguanjia/app/InferencePromptPolicyTest.kt
-@@ -8,6 +8,7 @@
+@@ -10,6 +10,7 @@
          for (mode in 0..2) {
              val prompt = InferencePromptPolicy.systemPrompt(mode, simpleQuestion = false, webResearch = false, supportsReasoning = true)
              assertTrue("Mode $mode prompt was ${prompt.length} chars", prompt.length <= 100)
