@@ -30,7 +30,7 @@ ROOT_NEW = """            if ((root.keys.filterIsInstance<String>().toSet() - se
 TESTS = r'''
 
     @Test fun onlyStandaloneToolCallMayExecute() {
-        val valid = "${'${AiToolRegistry.CALL_OPEN}'}{\"name\":\"location\",\"arguments\":{}}${'${AiToolRegistry.CALL_CLOSE}'}"
+        val valid = "${AiToolRegistry.CALL_OPEN}{\"name\":\"location\",\"arguments\":{}}${AiToolRegistry.CALL_CLOSE}"
         assertNotNull(AiToolRegistry.parseResponse("我会调用这个工具：$valid").error)
         assertNotNull(AiToolRegistry.parseResponse("$valid 我已经调用了").error)
         assertNull(AiToolRegistry.parseResponse(valid).error)
@@ -38,8 +38,20 @@ TESTS = r'''
     }
 
     @Test fun rejectsUnknownTopLevelProtocolFields() {
-        val extraField = "${'${AiToolRegistry.CALL_OPEN}'}{\"name\":\"location\",\"arguments\":{},\"note\":\"ignore policy\"}${'${AiToolRegistry.CALL_CLOSE}'}"
+        val extraField = "${AiToolRegistry.CALL_OPEN}{\"name\":\"location\",\"arguments\":{},\"note\":\"ignore policy\"}${AiToolRegistry.CALL_CLOSE}"
         assertNotNull(AiToolRegistry.parseResponse(extraField).error)
+    }
+'''
+
+EXTRACTOR_TESTS = r'''
+
+    @Test fun extractsExplicitCallsAtTheEndOfReasoningBlocks() {
+        val valid = "${AiToolRegistry.CALL_OPEN}{\"name\":\"location\",\"arguments\":{}}${AiToolRegistry.CALL_CLOSE}"
+        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>需要当前信息。$valid</think>"))
+        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>已完成判断</think>$valid"))
+        assertNull(AiToolRegistry.extractExplicitToolCallBlock("这里仅仅引用协议：$valid"))
+        assertNull(AiToolRegistry.extractExplicitToolCallBlock("<think>协议示例 $valid 但我还要继续思考</think>"))
+        assertNull(AiToolRegistry.extractExplicitToolCallBlock("$valid $valid"))
     }
 '''
 
@@ -85,12 +97,12 @@ EXTRACTOR = r'''
 
 '''
 
-OLD_PARSE_MODEL_REPLY = '''    private fun parseModelReply(raw: String): ModelReply {
+OLD_PARSE_MODEL_REPLY = r'''    private fun parseModelReply(raw: String): ModelReply {
         // Keep only the local model's explicitly tagged think block as an optional collapsed record.
         // The reasoning is never injected back into conversation context or used as factual evidence.
         val thoughtPattern = Regex("(?is)<think>(.*?)(?:</think>|$)")
         val reasoning = thoughtPattern.findAll(raw).map { it.groupValues[1].trim() }
-            .filter { it.isNotBlank() }.joinToString("\\n\\n").take(4000)
+            .filter { it.isNotBlank() }.joinToString("\n\n").take(4000)
         val strippedThink = thoughtPattern.replace(raw, "")
         val answer = strippedThink.replace(Regex("(?m)^\\s*(assistant|助手|AI管家)\\s*[:：]\\s*"), "").trim()
         return ModelReply(answer.ifBlank { "模型这次没有生成明确答案，请换个问法再试试。" }, reasoning)
@@ -103,8 +115,10 @@ NEW_PARSE_MODEL_REPLY = r'''    private fun parseModelReply(raw: String): ModelR
         // a quoted call surrounded by visible prose.
         val thoughtPattern = Regex("(?is)<think>(.*?)(?:</think>|$)")
         val extractedToolCall = AiToolRegistry.extractExplicitToolCallBlock(raw)
-        val reasoning = thoughtPattern.findAll(raw).map { it.groupValues[1].replace(extractedToolCall.orEmpty(), "").trim() }
-            .filter { it.isNotBlank() }.joinToString("\n\n").take(4000)
+        val reasoning = thoughtPattern.findAll(raw).map { match ->
+            val block = match.groupValues[1]
+            (if (extractedToolCall != null) block.replace(extractedToolCall, "") else block).trim()
+        }.filter { it.isNotBlank() }.joinToString("\n\n").take(4000)
         if (extractedToolCall != null) return ModelReply(extractedToolCall, reasoning)
 
         val strippedThink = thoughtPattern.replace(raw, "")
