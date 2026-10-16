@@ -63,7 +63,8 @@
 +        val safeAssistantName = assistantName.filterNot { it.isISOControl() }.trim().take(16).ifBlank { "中文伙伴" }
          val mode = modeIndex.coerceIn(0, 2)
          val base = when {
-             mode == 0 || (mode == 2 && simpleQuestion) ->
+-             mode == 0 || (mode == 2 && simpleQuestion) ->
++             mode == 0 || simpleQuestion ->
 -                "你是用户的中文伙伴。用简体中文准确简洁地回答；简单问题直接答，不展示推理；不确定就说明，不编造。"
 +                "你是$safeAssistantName。用简体中文准确简洁地回答；简单问题直接答，不展示推理；不确定就说明，不编造。"
              mode == 1 ->
@@ -75,7 +76,8 @@
          }
          // Do not inject model-specific control tokens into templates that do not advertise support.
          val control = if (!supportsReasoning) "" else when {
-             mode == 0 || (mode == 2 && simpleQuestion) -> "\n/no_think"
+-             mode == 0 || (mode == 2 && simpleQuestion) -> "\n/no_think"
++             mode == 0 || simpleQuestion -> "\n/no_think"
              else -> "\n/think"
          }
 -        // Research-specific instructions live next to the retrieved source material in the user prompt.
