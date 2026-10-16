@@ -49,6 +49,7 @@ jobs:
           xz -dc "$RUNNER_TEMP/source38-bundle.tar.gz.xz" | tar -xz -C "$RUNNER_TEMP/source38-bundle"
           python3 "$RUNNER_TEMP/source38-bundle/apply_phase1.py" "$GITHUB_WORKSPACE/buildsrc"
           python3 "$RUNNER_TEMP/source38-bundle/finalize.py" "$GITHUB_WORKSPACE/buildsrc"
+          python3 tools/patch_source38_casual_classifier.py "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
           cp "$RUNNER_TEMP/source38-bundle/java/AiToolRegistry.kt" buildsrc/app/src/main/java/com/aiguanjia/app/AiToolRegistry.kt
           cp "$RUNNER_TEMP/source38-bundle/java/AiToolRegistryTest.kt" buildsrc/app/src/test/java/com/aiguanjia/app/AiToolRegistryTest.kt
           cp "$RUNNER_TEMP/source38-bundle"/tests/*.py buildsrc/tests/
