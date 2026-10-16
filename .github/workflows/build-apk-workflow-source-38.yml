@@ -41,7 +41,7 @@ jobs:
           unzip -q DongBaKe-source-37.zip -d "$GITHUB_WORKSPACE/buildsrc"
           test -f buildsrc/settings.gradle.kts
           test -f buildsrc/app/build.gradle.kts
-          cat patches/source38-bundle-parts/part00.txt patches/source38-bundle-parts/part01.txt patches/source38-bundle-parts/part02.txt patches/source38-bundle-parts/part03.txt | tr -d '\r\n' > "$RUNNER_TEMP/source38-bundle.tar.gz.xz.b64"
+          cat patches/source38-bundle-parts/part00.txt patches/source38-bundle-parts/part01a.txt patches/source38-bundle-parts/part01b.txt patches/source38-bundle-parts/part02a.txt patches/source38-bundle-parts/part02b.txt patches/source38-bundle-parts/part02c.txt patches/source38-bundle-parts/part02d.txt patches/source38-bundle-parts/part03.txt | tr -d '\r\n' > "$RUNNER_TEMP/source38-bundle.tar.gz.xz.b64"
           test "$(wc -c < "$RUNNER_TEMP/source38-bundle.tar.gz.xz.b64")" -eq 36136
           base64 --decode "$RUNNER_TEMP/source38-bundle.tar.gz.xz.b64" > "$RUNNER_TEMP/source38-bundle.tar.gz.xz"
           echo "e109a5ed216c2b5fa6fe77a2c6c613f85bb5c653e50e97a6c803c2606b771052  $RUNNER_TEMP/source38-bundle.tar.gz.xz" | sha256sum -c -
