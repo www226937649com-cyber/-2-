@@ -162,6 +162,56 @@ jobs:
             sha256sum "$DEBUG_APK" "$RELEASE_APK"
           } > build/source-38-validation/build-provenance.txt
 
+      - name: Build safe side-by-side APK without replacing the existing app
+        working-directory: ${{ github.workspace }}/buildsrc
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p app/build/outputs/apk/primary app/build/outputs/apk/side-by-side
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/primary/DongBaKe-v0.12.4-ai-tool-dispatch-debug.apk
+          cp app/build.gradle.kts "$RUNNER_TEMP/source38-app-build.gradle.kts"
+          cp app/src/main/AndroidManifest.xml "$RUNNER_TEMP/source38-AndroidManifest.xml"
+          restore_build_files() {
+            cp "$RUNNER_TEMP/source38-app-build.gradle.kts" app/build.gradle.kts
+            cp "$RUNNER_TEMP/source38-AndroidManifest.xml" app/src/main/AndroidManifest.xml
+          }
+          trap restore_build_files EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          gradle = Path("app/build.gradle.kts")
+          manifest = Path("app/src/main/AndroidManifest.xml")
+          g = gradle.read_text()
+          m = manifest.read_text()
+          old_id = 'applicationId = "com.aiguanjia.app"'
+          new_id = 'applicationId = "com.aiguanjia.app.tooltest38"'
+          old_label = 'android:label="东巴壳"'
+          new_label = 'android:label="东巴壳（AI工具调度测试）"'
+          if g.count(old_id) != 1:
+              raise SystemExit("Expected exactly one primary applicationId before side-by-side build")
+          if m.count(old_label) != 1:
+              raise SystemExit("Expected exactly one main app label before side-by-side build")
+          gradle.write_text(g.replace(old_id, new_id, 1))
+          manifest.write_text(m.replace(old_label, new_label, 1))
+          PY
+          gradle --no-daemon --stacktrace -PdongbakeNativeBackend=vulkan :app:assembleDebug 2>&1 | tee build/source-38-validation/gradle-side-by-side-build.log
+          SIDE_APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$SIDE_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$SIDE_APK" | tee build/source-38-validation/side-by-side-apk-badging.txt
+          grep -q "package: name='com.aiguanjia.app.tooltest38' versionCode='38' versionName='0.12.4-ai-tool-dispatch'" build/source-38-validation/side-by-side-apk-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$SIDE_APK" 2>&1 | tee build/source-38-validation/side-by-side-apk-signature-check.txt
+          cp "$SIDE_APK" app/build/outputs/apk/side-by-side/DongBaKe-v0.12.4-ai-tool-dispatch-side-by-side.apk
+          {
+            echo "applicationId=com.aiguanjia.app.tooltest38"
+            echo "versionCode=38"
+            echo "versionName=0.12.4-ai-tool-dispatch"
+            echo "label=东巴壳（AI工具调度测试）"
+            echo "installMode=side-by-side; does not replace com.aiguanjia.app"
+            echo "dataIsolation=separate app data; existing chat history is not copied"
+            sha256sum app/build/outputs/apk/side-by-side/DongBaKe-v0.12.4-ai-tool-dispatch-side-by-side.apk
+          } > build/source-38-validation/side-by-side-proof.txt
+          restore_build_files
+          trap - EXIT
+
       - name: Package and verify reproducible source-38 archive
         if: always()
         shell: bash
