@@ -8,6 +8,7 @@ on:
     paths:
       - 'DongBaKe-source-36.zip'
       - 'patches/source37-parts/**'
+      - 'patches/source37-kotlin-compile-fix.patch'
       - '.github/workflows/build-apk-workflow-source-37.yml'
 
 permissions:
@@ -47,16 +48,14 @@ jobs:
           gzip -dc "$RUNNER_TEMP/source37.patch.gz" > "$RUNNER_TEMP/source37.patch"
           patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
           patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < "$RUNNER_TEMP/source37.patch"
+          patch --dry-run --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
+          patch --batch --forward -p1 -d "$GITHUB_WORKSPACE/buildsrc" < patches/source37-kotlin-compile-fix.patch
+          test "$(grep -c 'setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt)" -eq 6
+          ! grep -q 'popupBackground = rounded(C_PANEL, 16, C_STROKE)' buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt
           grep -q 'applicationId = "com.aiguanjia.app"' buildsrc/app/build.gradle.kts
           grep -q 'versionCode = 37' buildsrc/app/build.gradle.kts
           grep -q 'versionName = "0.12.3-context-logging"' buildsrc/app/build.gradle.kts
-          echo "===== MainActivity.kt lines 1768-1860 (compile-failure diagnostic) ====="
-          nl -ba buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt | sed -n '1768,1860p'
-          echo "===== Source patch headers ====="
-          grep -nE '^(---|\+\+\+|@@)' "$RUNNER_TEMP/source37.patch" | head -100
-          sha256sum DongBaKe-source-36.zip patches/source37-parts/part00.txt patches/source37-parts/part01.txt patches/source37-parts/part02.txt patches/source37-parts/part03.txt patches/source37-parts/part04.txt patches/source37-parts/part05.txt patches/source37-parts/part06.txt "$RUNNER_TEMP/source37.patch.gz" "$RUNNER_TEMP/source37.patch" | tee source-37-input-sha256.txt
-          echo "=== DIAGNOSTIC: patched MainActivity.kt lines 1765-1870 ==="
-          nl -ba "$GITHUB_WORKSPACE/buildsrc/app/src/main/java/com/aiguanjia/app/MainActivity.kt" | sed -n '1765,1870p'
+          sha256sum DongBaKe-source-36.zip patches/source37-parts/part00.txt patches/source37-parts/part01.txt patches/source37-parts/part02.txt patches/source37-parts/part03.txt patches/source37-parts/part04.txt patches/source37-parts/part05.txt patches/source37-parts/part06.txt "$RUNNER_TEMP/source37.patch.gz" "$RUNNER_TEMP/source37.patch" patches/source37-kotlin-compile-fix.patch | tee source-37-input-sha256.txt
 
       - uses: actions/setup-java@v4
         with:
