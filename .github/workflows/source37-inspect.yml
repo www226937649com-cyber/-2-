@@ -6,6 +6,8 @@ on:
       - work/source-37-context-logging
     paths:
       - '.github/workflows/source37-inspect.yml'
+      - 'patches/source37-parts/**'
+      - 'patches/source37-kotlin-compile-fix.patch'
   workflow_dispatch:
 
 permissions:
