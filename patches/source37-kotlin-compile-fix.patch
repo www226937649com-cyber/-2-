@@ -163,7 +163,7 @@
 @@ -85,3 +85,21 @@
      }
  
- @Test fun finalTerminationReasonsAreExplicitAndEvidenceBased() {
++    @Test fun finalTerminationReasonsAreExplicitAndEvidenceBased() {
 +        assertEquals("natural_stop", InferenceBudgetPolicy.finalTerminationReason(
 +            "42", "promptTokens=8; generatedTokens=12; cancelled=false", 64, false, "sampler_emitted_end_of_generation"
 +        ))
