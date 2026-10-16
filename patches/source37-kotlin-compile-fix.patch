@@ -1,36 +1,36 @@
 --- a/app/src/main/java/com/aiguanjia/app/MainActivity.kt
 +++ b/app/src/main/java/com/aiguanjia/app/MainActivity.kt
-@@ -1786,3 +1786,3 @@
+@@ -1786,4 +1786,4 @@
          val threadSpinner = Spinner(this).apply {
              background = rounded(C_PANEL_2, 14, C_STROKE)
 -            popupBackground = rounded(C_PANEL, 16, C_STROKE)
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(threadLabels)
-@@ -1800,3 +1800,3 @@
+@@ -1800,4 +1800,4 @@
          val contextSpinner = Spinner(this).apply {
              background = rounded(C_PANEL_2, 14, C_STROKE)
 -            popupBackground = rounded(C_PANEL, 16, C_STROKE)
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(contextLabels)
-@@ -1813,3 +1813,3 @@
+@@ -1813,4 +1813,4 @@
          val gpuLayerSpinner = Spinner(this).apply {
              background = rounded(C_PANEL_2, 14, C_STROKE)
 -            popupBackground = rounded(C_PANEL, 16, C_STROKE)
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(gpuLayerLabels)
-@@ -1824,3 +1824,3 @@
+@@ -1824,4 +1824,4 @@
          val kvCacheSpinner = Spinner(this).apply {
              background = rounded(C_PANEL_2, 14, C_STROKE)
 -            popupBackground = rounded(C_PANEL, 16, C_STROKE)
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(kvCacheLabels)
-@@ -1835,3 +1835,3 @@
+@@ -1835,4 +1835,4 @@
          val flashAttentionSpinner = Spinner(this).apply {
              background = rounded(C_PANEL_2, 14, C_STROKE)
 -            popupBackground = rounded(C_PANEL, 16, C_STROKE)
 +            setPopupBackgroundDrawable(rounded(C_PANEL, 16, C_STROKE))
              adapter = inferenceSettingAdapter(flashAttentionLabels)
-@@ -1848,3 +1848,3 @@
+@@ -1848,4 +1848,4 @@
          val draftSpinner = Spinner(this).apply {
              background = rounded(C_PANEL_2, 14, C_STROKE)
 -            popupBackground = rounded(C_PANEL, 16, C_STROKE)
