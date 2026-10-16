@@ -228,11 +228,18 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd "$GITHUB_WORKSPACE/buildsrc"
-          find . -type f \\( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \\) -print -delete
+          find . -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print -delete
+          remaining_backups="$(find . -type f \( -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print)"
+          if [ -n "$remaining_backups" ]; then
+            echo "Temporary backup/reject files remain in source tree"
+            exit 5
+          fi
           zip -qr "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" . -x './app/build/*' './app/.cxx/*' './app/src/main/jniLibs/*' './build/*' './.gradle/*' './.kotlin/*' './**/__pycache__/*' './**/*.pyc'
           unzip -t "$GITHUB_WORKSPACE/DongBaKe-source-37.zip"
-          archive_entries="$(unzip -Z1 "$GITHUB_WORKSPACE/DongBaKe-source-37.zip")"
-          if printf '%s\\n' "$archive_entries" | grep -E '\\.(orig|rej|bak)
+          unzip -p "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" app/src/main/java/com/aiguanjia/app/MainActivity.kt > "$RUNNER_TEMP/archived-MainActivity.kt"
+          grep -q 'aiDisplayName()' "$RUNNER_TEMP/archived-MainActivity.kt"
+          grep -q 'generationBudget.softThinkingTokens' "$RUNNER_TEMP/archived-MainActivity.kt"
+          sha256sum "$GITHUB_WORKSPACE/DongBaKe-source-37.zip" | tee -a "$GITHUB_WORKSPACE/source-37-input-sha256.txt"
       - name: Upload APKs, source and validation logs
         if: always()
         uses: actions/upload-artifact@v4
