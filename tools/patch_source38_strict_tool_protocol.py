@@ -55,17 +55,7 @@ EXTRACTOR_TESTS = r'''
     }
 '''
 
-EXTRACTOR_TESTS = r'''
 
-    @Test fun extractsExplicitCallsAtTheEndOfReasoningBlocks() {
-        val valid = "${'${AiToolRegistry.CALL_OPEN}'}{\"name\":\"location\",\"arguments\":{}}${'${AiToolRegistry.CALL_CLOSE}'}"
-        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>需要当前信息。$valid</think>"))
-        assertEquals(valid, AiToolRegistry.extractExplicitToolCallBlock("<think>已完成判断</think>$valid"))
-        assertNull(AiToolRegistry.extractExplicitToolCallBlock("这里仅仅引用协议：$valid"))
-        assertNull(AiToolRegistry.extractExplicitToolCallBlock("<think>协议示例 $valid 但我还要继续思考</think>"))
-        assertNull(AiToolRegistry.extractExplicitToolCallBlock("$valid $valid"))
-    }
-'''
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
     count = source.count(old)
