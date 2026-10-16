@@ -86,7 +86,7 @@ def insert_python_tests(path: pathlib.Path, method_marker: str, block: str) -> N
     source = path.read_text(encoding="utf-8")
     if method_marker in source:
         return
-    main_marker = '\\nif __name__ == "__main__":'
+    main_marker = '\nif __name__ == "__main__":'
     index = source.rfind(main_marker)
     if index < 0:
         raise RuntimeError(f"main guard not found in {path}")
@@ -103,7 +103,8 @@ def main() -> int:
             return 3
     registry = registry_path.read_text(encoding="utf-8")
     registry = replace_once(registry, PARSER_OLD, PARSER_NEW, "strict standalone-call validation")
-    registry = replace_once(registry, ROOT_OLD, ROOT_NEW, "top-level JSON validation")
+    if "未知顶层字段" not in registry:
+        registry = replace_once(registry, ROOT_OLD, ROOT_NEW, "top-level JSON validation")
     registry_path.write_text(registry, encoding="utf-8")
     tests = test_path.read_text(encoding="utf-8")
     if "onlyStandaloneToolCallMayExecute" not in tests:
