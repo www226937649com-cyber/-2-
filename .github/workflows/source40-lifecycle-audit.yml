@@ -68,6 +68,21 @@ jobs:
             echo "version metadata:"
             grep -nE 'applicationId|versionCode|versionName' "$SRC/app/build.gradle.kts"
             echo
+            echo "=== Native prefix/KV cache implementation windows ==="
+            sed -n '70,115p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
+            sed -n '1090,1225p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
+            sed -n '1235,1330p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
+            sed -n '1315,1450p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
+            echo
+            echo "=== Kotlin native session ownership and model reload handling ==="
+            sed -n '45,140p' "$SRC/app/src/main/java/com/aiguanjia/app/NativeLlamaEngine.kt"
+            sed -n '3450,3655p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            sed -n '3900,3970p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            sed -n '4950,4990p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            echo
+            echo "=== Existing KV cache help text that may be stale ==="
+            sed -n '1665,1685p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            echo
             echo "=== Model selection, persisted path, auto-load and lifecycle references ==="
             grep -nEi 'sharedpreferences|datastore|persist|auto.?load|model.?path|selected.?model|load.?model|unload.?model|oncreate|onresume|onstop|ondestroy|keepalive|model.?loaded' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt" "$SRC/app/src/main/java/com/aiguanjia/app/NativeLlamaEngine.kt" "$SRC/app/src/main/java/com/aiguanjia/app/InferenceKeepAliveService.kt" | head -n 240 || true
             echo
