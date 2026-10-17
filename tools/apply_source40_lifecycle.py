@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply Source40 model lifecycle corrections to a freshly reconstructed source tree."""
 from pathlib import Path
+import re
 import shutil
 import sys
 
@@ -100,6 +101,33 @@ def main() -> None:
     source = replace_once(source, old_exception, new_exception, "exception auto-load recovery")
 
     main_path.write_text(source, encoding="utf-8")
+
+    # The Source39 test suite had an assertion that encoded the old, incorrect cache explanation.
+    # Keep the regression test's intent while asserting the real native prefix-cache contract.
+    performance_test_path = root / "tests/test_performance_management.py"
+    if not performance_test_path.is_file():
+        raise SystemExit("performance management regression test is missing")
+    performance_test = performance_test_path.read_text(encoding="utf-8")
+    stale_method = re.compile(
+        r"(?ms)^    def test_cross_turn_kv_reuse_is_not_falsely_reported\\(self\\):\\n.*?(?=^    def [A-Za-z_]\\w*\\(|^class [A-Za-z_]\\w*|\\Z)"
+    )
+    corrected_method = '''    def test_cross_turn_kv_reuse_is_not_falsely_reported(self):
+        from pathlib import Path
+        source_root = Path(__file__).resolve().parents[1]
+        main_source = (source_root / "app/src/main/java/com/aiguanjia/app/MainActivity.kt").read_text(encoding="utf-8")
+        native_source = (source_root / "app/src/main/cpp/dongbake_llama_jni.cpp").read_text(encoding="utf-8")
+        self.assertIn("跨轮 KV 前缀复用已在原生层实现", main_source)
+        self.assertIn("共同前缀至少连续一致 16 个 Token", main_source)
+        self.assertIn("prefix_cache_reused_tokens", main_source)
+        self.assertIn("exact_prefix_reused", native_source)
+        self.assertIn("contextPersistent", native_source)
+        self.assertNotIn("跨多轮聊天的 KV Cache 复用目前并未实现", main_source)
+'''
+    performance_test, rewritten = stale_method.subn(corrected_method, performance_test, count=1)
+    if rewritten != 1:
+        raise SystemExit(f"stale KV-cache regression assertion: expected exactly one method, rewrote {rewritten}")
+    performance_test_path.write_text(performance_test, encoding="utf-8")
+
     tests_dir = root / "tests"
     tests_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(test_source, tests_dir / test_source.name)
