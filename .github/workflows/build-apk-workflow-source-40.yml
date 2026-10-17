@@ -73,6 +73,10 @@ jobs:
           gzip -dc "$RUNNER_TEMP/source40/source40-hotfix.patch.gz" > "$RUNNER_TEMP/source40/source40-hotfix.patch"
           echo "92d1b6f2858184eece11e1a7a6546c8ba66c3b14cff3e9d7126294e8eb30b321  $RUNNER_TEMP/source40/source40-hotfix.patch" | sha256sum -c -
           patch -p1 --batch --fuzz=0 < "$RUNNER_TEMP/source40/source40-hotfix.patch"
+          sha256sum "$GITHUB_WORKSPACE/patches/source40-bundle/source40-model-autoload.patch" | tee -a "$GITHUB_WORKSPACE/source-40-input-sha256.txt"
+          patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/patches/source40-bundle/source40-model-autoload.patch"
+          grep -q 'model_restore_auto_begin' app/src/main/java/com/aiguanjia/app/MainActivity.kt
+          grep -q 'prefix_cache_reused_tokens' app/src/main/cpp/dongbake_llama_jni.cpp
           grep -q 'applicationId = "com.aiguanjia.app"' app/build.gradle.kts
           grep -q 'versionCode = 40' app/build.gradle.kts
           grep -q 'versionName = "0.12.6-ai-performance-routing"' app/build.gradle.kts
@@ -296,14 +300,21 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           ARCHIVE_COPY="$RUNNER_TEMP/DongBaKe-source-40-to-publish.zip"
           cp "$GITHUB_WORKSPACE/DongBaKe-source-40.zip" "$ARCHIVE_COPY"
-          git fetch --no-tags origin "${GITHUB_REF_NAME}"
-          git checkout --detach "origin/${GITHUB_REF_NAME}"
-          cp "$ARCHIVE_COPY" "$GITHUB_WORKSPACE/DongBaKe-source-40.zip"
-          git add DongBaKe-source-40.zip
-          if git diff --cached --quiet; then
-            echo 'This exact Source40 archive is already present on the work branch.'
-            exit 0
-          fi
-          git commit -m "Add DongBaKe Source40 v0.12.6 performance routing source archive (run ${GITHUB_RUN_NUMBER})"
-          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
-          echo 'Verified Source40 archive published to the work branch.'
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin "${GITHUB_REF_NAME}"
+            git checkout --detach "origin/${GITHUB_REF_NAME}"
+            cp "$ARCHIVE_COPY" "$GITHUB_WORKSPACE/DongBaKe-source-40.zip"
+            git add DongBaKe-source-40.zip
+            if git diff --cached --quiet; then
+              echo 'This exact Source40 archive is already present on the work branch.'
+              exit 0
+            fi
+            git commit -m "Add DongBaKe Source40 v0.12.6 performance routing source archive (run ${GITHUB_RUN_NUMBER}, attempt $attempt)"
+            if git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
+              echo 'Verified Source40 archive published to the work branch.'
+              exit 0
+            fi
+            echo "Publication raced with another work-branch commit (attempt $attempt/5); fetching fresh HEAD and retrying."
+          done
+          echo 'Source40 archive publication failed after five non-destructive retries.' >&2
+          exit 1

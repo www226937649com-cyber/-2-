@@ -51,6 +51,9 @@ jobs:
           gzip -dc "$RUNNER_TEMP/source40/source40-hotfix.patch.gz" > "$RUNNER_TEMP/source40/source40-hotfix.patch"
           echo "92d1b6f2858184eece11e1a7a6546c8ba66c3b14cff3e9d7126294e8eb30b321  $RUNNER_TEMP/source40/source40-hotfix.patch" | sha256sum -c -
           patch -p1 --batch --fuzz=0 < "$RUNNER_TEMP/source40/source40-hotfix.patch"
+          sha256sum "$GITHUB_WORKSPACE/patches/source40-bundle/source40-model-autoload.patch" | tee "$RUNNER_TEMP/source40/source40-model-autoload.sha256"
+          patch -p1 --batch --fuzz=0 < "$GITHUB_WORKSPACE/patches/source40-bundle/source40-model-autoload.patch"
+          python3 -m unittest discover -s "$GITHUB_WORKSPACE/buildsrc/tests" -p 'test_model_auto_load_source.py' -v
           grep -q 'applicationId = "com.aiguanjia.app"' app/build.gradle.kts
           grep -q 'versionCode = 40' app/build.gradle.kts
           echo 'Source40 source reconstructed with exact CI patch hashes.'
