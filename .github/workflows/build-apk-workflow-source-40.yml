@@ -64,11 +64,11 @@ jobs:
           echo "231b29660383316017dea9c6dfd4d7315b75792926e4c9117d9bc65d157c73e2  $RUNNER_TEMP/source40/source40.patch" | sha256sum -c -
           cd "$GITHUB_WORKSPACE/buildsrc"
           patch -p1 --batch --fuzz=0 < "$RUNNER_TEMP/source40/source40.patch"
-          echo "8e24062f8d5d09b9a657345f65a4822f06e1961c824faf3ec94d0763c110dc33  $RUNNER_TEMP/source40/source40-hotfix.patch.gz" > "$RUNNER_TEMP/source40-hotfix-gzip.sha256"
+          echo "741108a9fe9f7d3337ccd5331a023d61608e40fd69becaf2d83e93bff8feaf0f  $RUNNER_TEMP/source40/source40-hotfix.patch.gz" > "$RUNNER_TEMP/source40-hotfix-gzip.sha256"
           base64 --decode "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix.patch.gz.b64" > "$RUNNER_TEMP/source40/source40-hotfix.patch.gz"
           sha256sum -c "$RUNNER_TEMP/source40-hotfix-gzip.sha256"
           gzip -dc "$RUNNER_TEMP/source40/source40-hotfix.patch.gz" > "$RUNNER_TEMP/source40/source40-hotfix.patch"
-          echo "9c34638a4d1fd9a3b31a58ba180d2a38dee5ece6e2fe7bb521bc7b15c7cff890  $RUNNER_TEMP/source40/source40-hotfix.patch" | sha256sum -c -
+          echo "92d1b6f2858184eece11e1a7a6546c8ba66c3b14cff3e9d7126294e8eb30b321  $RUNNER_TEMP/source40/source40-hotfix.patch" | sha256sum -c -
           patch -p1 --batch --fuzz=0 < "$RUNNER_TEMP/source40/source40-hotfix.patch"
           grep -q 'applicationId = "com.aiguanjia.app"' app/build.gradle.kts
           grep -q 'versionCode = 40' app/build.gradle.kts
