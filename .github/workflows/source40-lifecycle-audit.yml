@@ -81,6 +81,15 @@ jobs:
             sed -n '1235,1330p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
             sed -n '1315,1450p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
             echo
+            echo "=== Saved chat session lifecycle and selected-conversation restore ==="
+            grep -nE 'loadSavedSessions|saveSessions|createNewConversation|currentSessionId|sessionsFile|restore.*session|last.*session|selected.*session' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt" | head -n 180 || true
+            for line in $(grep -nE 'private fun loadSavedSessions|private fun saveSessions|private fun createNewConversation|private fun loadSession|private fun switchSession' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt" | cut -d: -f1); do
+              start=$((line - 8)); if [ "$start" -lt 1 ]; then start=1; fi
+              end=$((line + 100))
+              sed -n "${start},${end}p" "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+              echo
+            done
+            echo
             echo "=== MainActivity startup and model selection initialization ==="
             sed -n '180,270p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
             sed -n '370,465p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
