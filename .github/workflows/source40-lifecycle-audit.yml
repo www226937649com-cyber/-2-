@@ -74,6 +74,13 @@ jobs:
             sed -n '1235,1330p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
             sed -n '1315,1450p' "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp"
             echo
+            echo "=== MainActivity startup and model selection initialization ==="
+            sed -n '180,270p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            sed -n '1980,2110p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            echo
+            echo "=== Model load preferences and calls ==="
+            grep -nE 'model_auto_load|loadModel\(|releaseInferenceContext|releaseModel\(|nativeReleaseModel|loadedHandle|loadedModelFileName' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt" "$SRC/app/src/main/java/com/aiguanjia/app/NativeLlamaEngine.kt" "$SRC/app/src/main/cpp/dongbake_llama_jni.cpp" | tail -n 180 || true
+            echo
             echo "=== Kotlin native session ownership and model reload handling ==="
             sed -n '45,140p' "$SRC/app/src/main/java/com/aiguanjia/app/NativeLlamaEngine.kt"
             sed -n '3450,3655p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
