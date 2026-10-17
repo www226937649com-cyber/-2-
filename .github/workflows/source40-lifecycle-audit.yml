@@ -76,6 +76,8 @@ jobs:
             echo
             echo "=== MainActivity startup and model selection initialization ==="
             sed -n '180,270p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            sed -n '370,465p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
+            sed -n '3450,3525p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
             sed -n '1980,2110p' "$SRC/app/src/main/java/com/aiguanjia/app/MainActivity.kt"
             echo
             echo "=== Model load preferences and calls ==="
