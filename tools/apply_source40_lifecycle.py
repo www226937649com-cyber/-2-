@@ -109,7 +109,7 @@ def main() -> None:
         raise SystemExit("performance management regression test is missing")
     performance_test = performance_test_path.read_text(encoding="utf-8")
     stale_method = re.compile(
-        r"(?ms)^    def test_cross_turn_kv_reuse_is_not_falsely_reported\\(self\\):\\n.*?(?=^    def [A-Za-z_]\\w*\\(|^class [A-Za-z_]\\w*|\\Z)"
+        r"(?ms)^    def test_cross_turn_kv_reuse_is_not_falsely_reported\(self\):\n.*?(?=^    def [A-Za-z_]\w*\(|^class [A-Za-z_]\w*|\Z)"
     )
     corrected_method = '''    def test_cross_turn_kv_reuse_is_not_falsely_reported(self):
         from pathlib import Path
