@@ -23,6 +23,12 @@ class ModelAutoLoadSourceContractTests(unittest.TestCase):
         disable = 'if (autoTriggered) preferences.edit().putBoolean("model_auto_load", false).apply()'
         self.assertGreaterEqual(self.main.count(disable), 2)
 
+    def test_last_saved_conversation_is_restored_on_startup(self):
+        self.assertIn("val previousConversation = sessions.lastOrNull", self.main)
+        self.assertIn("openConversation(previousConversation.id)", self.main)
+        self.assertIn("conversation_restore_complete", self.main)
+        self.assertIn("conversation_restore_empty", self.main)
+        self.assertIn("createNewConversation(showWelcome = false)", self.main)
     def test_kv_cache_help_matches_native_exact_token_prefix_implementation(self):
         self.assertIn("exact_prefix_reused", self.native)
         self.assertIn("prefix_cache_reused_tokens", self.native)

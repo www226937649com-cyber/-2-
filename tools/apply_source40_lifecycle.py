@@ -66,6 +66,24 @@ def main() -> None:
 """
     source = replace_once(source, old_start, new_start, "startup auto-restore")
 
+    # Loading the serialized session list is not enough: the old startup path
+    # immediately created a blank conversation and left the transcript/history empty.
+    old_session_start = """        loadSavedSessions()
+        createNewConversation(showWelcome = false)
+"""
+    new_session_start = """        loadSavedSessions()
+        val previousConversation = sessions.lastOrNull { session -> session.messages.any { it.isUser } }
+        if (previousConversation != null) {
+            AppDiagnostics.log(this, "INFO", "conversation_restore_begin", "sessionId=${previousConversation.id}; messages=${previousConversation.messages.size}")
+            openConversation(previousConversation.id)
+            AppDiagnostics.log(this, "INFO", "conversation_restore_complete", "sessionId=${previousConversation.id}; transcriptMessages=${transcript.size}; historyPairs=${history.size}")
+        } else {
+            createNewConversation(showWelcome = false)
+            AppDiagnostics.log(this, "INFO", "conversation_restore_empty", "no_saved_user_conversation=true; createdFreshConversation=true")
+        }
+"""
+    source = replace_once(source, old_session_start, new_session_start, "startup conversation restore")
+
     old_cache = """        addExpandableCard(
             "② KV Cache：缓存状态与复用边界",
             "本轮生成使用上下文缓存；跨多轮聊天的 KV Cache 复用目前并未实现，不会显示为已开启。",
