@@ -65,7 +65,10 @@ jobs:
           cd "$GITHUB_WORKSPACE/buildsrc"
           patch -p1 --batch --fuzz=0 < "$RUNNER_TEMP/source40/source40.patch"
           echo "741108a9fe9f7d3337ccd5331a023d61608e40fd69becaf2d83e93bff8feaf0f  $RUNNER_TEMP/source40/source40-hotfix.patch.gz" > "$RUNNER_TEMP/source40-hotfix-gzip.sha256"
-          base64 --decode "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix.patch.gz.b64" > "$RUNNER_TEMP/source40/source40-hotfix.patch.gz"
+          cat "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix-part00.txt" "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix-part01.txt" "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix-part02.txt" "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix-part03.txt" "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix-part04.txt" "$GITHUB_WORKSPACE/patches/source40-bundle/source40-hotfix-part05.txt" > "$RUNNER_TEMP/source40/source40-hotfix.patch.gz.b64"
+          echo "f5ea27036f2c6abb0092b08a0f8e1c8b8f54ac8a2416832ef991092cfbc46f8f  $RUNNER_TEMP/source40/source40-hotfix.patch.gz.b64" > "$RUNNER_TEMP/source40-hotfix-b64.sha256"
+          sha256sum -c "$RUNNER_TEMP/source40-hotfix-b64.sha256"
+          base64 --decode "$RUNNER_TEMP/source40/source40-hotfix.patch.gz.b64" > "$RUNNER_TEMP/source40/source40-hotfix.patch.gz"
           sha256sum -c "$RUNNER_TEMP/source40-hotfix-gzip.sha256"
           gzip -dc "$RUNNER_TEMP/source40/source40-hotfix.patch.gz" > "$RUNNER_TEMP/source40/source40-hotfix.patch"
           echo "92d1b6f2858184eece11e1a7a6546c8ba66c3b14cff3e9d7126294e8eb30b321  $RUNNER_TEMP/source40/source40-hotfix.patch" | sha256sum -c -
