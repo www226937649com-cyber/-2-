@@ -266,6 +266,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Upload compact install package (APKs and source archive only)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DongBaKe-source-40-installers-v0.12.6-run-${{ github.run_number }}
+          path: |
+            buildsrc/app/build/outputs/apk/primary/DongBaKe-v0.12.6-ai-performance-routing-debug.apk
+            buildsrc/app/build/outputs/apk/side-by-side/DongBaKe-v0.12.6-ai-performance-routing-side-by-side.apk
+            DongBaKe-source-40.zip
+            source-40-input-sha256.txt
+            buildsrc/build/source-40-validation/build-provenance.txt
+            buildsrc/build/source-40-validation/side-by-side-proof.txt
+            buildsrc/build/source-40-validation/debug-apk-badging.txt
+            buildsrc/build/source-40-validation/side-by-side-apk-badging.txt
+            buildsrc/build/source-40-validation/python-tests.log
+            buildsrc/build/source-40-validation/model-profile-tests.log
+            buildsrc/build/source-40-validation/math-parser-tests.log
+            buildsrc/build/source-40-validation/source-audit-tests.log
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Publish Source40 archive to this work branch after all checks pass
         if: success() && github.event_name == 'push' && github.ref_name == 'work/source-37-context-logging'
         shell: bash
